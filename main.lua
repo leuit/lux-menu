@@ -1,4 +1,18 @@
+-- Globals
+
+-- Menu color customization
 local _menuColor
+
+-- License key validation for LUX
+local _buyer
+local _secretKey = "devbuild"
+local _gatekeeper = false
+
+-- BOOL if the player is in a vehicle
+local _pVehicle = false
+
+-- Init variables
+local showMinimap = true
 
 local colorRed = { r = 231, g = 76, b = 60, a = 255 } -- rgb(231, 76, 60)
 local colorGreen = { r = 46, g = 204, b = 113, a = 255 } -- rgb(46, 204, 113)
@@ -7,26 +21,8 @@ local colorPurple = { r = 155, g = 89, b = 182, a = 255 } -- rgb(155, 89, 182)
 
 _menuColor = colorPurple
 
-local validWeapons = {
-	-- Pistols
-	'WEAPON_PISTOL',
-	'WEAPON_PISTOL_MK2',
-	'WEAPON_COMBATPISTOL',
-	'WEAPON_APPISTOL',
-	'WEAPON_PISTOL50',
-	'WEAPON_SNSPISTOL',
-	'WEAPON_SNSPISTOL_MK2',
-	'WEAPON_REVOLVER',
-	'WEAPON_REVOLVER_MK2',
-	'WEAPON_HEAVYPISTOL',
-	'WEAPON_VINTAGEPISTOL',
-	'WEAPON_MARKSMANPISTOL',
-	-- SMGs
-	'WEAPON_MICROSMG',
-	'WEAPON_MACHINEPISTOL',
-}
 
-function KillYourself()
+local function KillYourself()
 	Citizen.CreateThread(function()
 		local playerPed = GetPlayerPed(-1)
 
@@ -35,14 +31,10 @@ function KillYourself()
 
 		GiveWeaponToPed(playerPed, GetHashKey("WEAPON_PISTOL"), 250, false, true)
 
-		for i=1, #validWeapons do
-			if HasPedGotWeapon(playerPed, GetHashKey(validWeapons[i]), false) then
-				if GetAmmoInPedWeapon(playerPed, GetHashKey(validWeapons[i])) > 0 then
-					canSuicide = true
-					foundWeapon = GetHashKey(validWeapons[i])
-
-					break
-				end
+		if HasPedGotWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) then
+			if GetAmmoInPedWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) > 0 then
+				canSuicide = true
+				foundWeapon = GetHashKey('WEAPON_PISTOL')
 			end
 		end
 
@@ -69,8 +61,6 @@ function KillYourself()
 	end)
 end
 
-local secretKey = "devbuild"
-local gatekeeper = false
 -- Config for LSC
 
 local vehicleMods = {
@@ -593,7 +583,7 @@ local function drawFooter()
 
 			drawRect(x, y, menuWidth, buttonHeight / 2, footerColor)
 
-			drawText("DEV BUILD | v1.0", x, y - titleHeight / 2.7 + titleYOffset, menus[currentMenu].titleFont, menus[currentMenu].titleColor, titleScale / 3, true)
+			drawText("v1.0 | LICENSED TO ~p~" .. _buyer, x, y - titleHeight / 2.7 + titleYOffset, menus[currentMenu].titleFont, menus[currentMenu].titleColor, titleScale / 3, true)
 		end
 
 	end
@@ -637,7 +627,7 @@ local function drawButton(text, subText)
 		end
 
 		drawRect(x, y, menuWidth, buttonHeight, backgroundColor)
-		if subText == "isMenu" then
+		if menus[currentMenu].subTitle == "MAIN MENU" then -- and subText == "isMenu"
 			drawText(
 			text,
 			menus[currentMenu].x + 0.015,
@@ -1407,9 +1397,8 @@ end
 Citizen.CreateThread(function()
 	while true do
 		if playerBlips then
-			print("LUXdbg | Player Blips Enabled")
 			-- show blips
-			for id = 0, 64 do
+			for id = 0, 256 do
 				if NetworkIsPlayerActive(id) and GetPlayerPed(id) ~= GetPlayerPed(-1) then
 					ped = GetPlayerPed(id)
 					blip = GetBlipFromEntity(ped)
@@ -1417,26 +1406,26 @@ Citizen.CreateThread(function()
 					-- HEAD DISPLAY STUFF --
 
 					-- Create head display (this is safe to be spammed)
-					headId = CreateMpGamerTag(ped, GetPlayerName( id ), false, false, "", false)
+					-- headId = Citizen.InvokeNative( 0xBFEFE3321A3F5015, ped, GetPlayerName( id ), false, false, "", false )
 
 					-- Player Name Sprite (black and ugly)
-					-- SetMpGamerTagVisibility(headId, 0, true )
+					-- Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 0, true )
 
 					wantedLvl = GetPlayerWantedLevel(id)
 
 					-- Wanted level display
 					if wantedLvl then
-						SetMpGamerTagVisibility(headId, 7, true ) -- Add wanted sprite
-						SetMpGamerTagWantedLevel(headId, wantedLvl ) -- Set wanted number
+						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 7, true ) -- Add wanted sprite
+						Citizen.InvokeNative( 0xCF228E2AA03099C3, headId, wantedLvl ) -- Set wanted number
 					else
-						SetMpGamerTagVisibility(headId, 7, false ) -- Remove wanted sprite
+						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 7, false ) -- Remove wanted sprite
 					end
 
 					-- Speaking display
 					if NetworkIsPlayerTalking(id) then
-						SetMpGamerTagVisibility(headId, 9, true ) -- Add speaking sprite
+						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, true ) -- Add speaking sprite
 					else
-						SetMpGamerTagVisibility(headId, 9, false ) -- Remove speaking sprite
+						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, false ) -- Remove speaking sprite
 					end
 
 					-- BLIP STUFF --
@@ -1444,7 +1433,7 @@ Citizen.CreateThread(function()
 					if not DoesBlipExist(blip) then -- Add blip and create head display on player
 						blip = AddBlipForEntity(ped)
 						SetBlipSprite(blip, 1)
-						ShowHeadingIndicatorOnBlip(blip, true ) -- Player Blip indicator
+						Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true ) -- Player Blip indicator
 					else -- update blip
 						veh = GetVehiclePedIsIn(ped, false)
 						blipSprite = GetBlipSprite(blip)
@@ -1452,7 +1441,7 @@ Citizen.CreateThread(function()
 						if not GetEntityHealth(ped) then -- dead
 							if blipSprite ~= 274 then
 								SetBlipSprite(blip, 274)
-								ShowHeadingIndicatorOnBlip(blip, false ) -- Player Blip indicator
+								Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false ) -- Player Blip indicator
 							end
 						elseif veh then
 							vehClass = GetVehicleClass(veh)
@@ -1460,83 +1449,83 @@ Citizen.CreateThread(function()
 							if vehClass == 15 then -- Helicopters
 								if blipSprite ~= 422 then
 									SetBlipSprite(blip, 422)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 8 then -- Motorcycles
 								if blipSprite ~= 226 then
 									SetBlipSprite(blip, 226)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 16 then -- Plane
 								if vehModel == GetHashKey("besra") or vehModel == GetHashKey("hydra") or vehModel == GetHashKey("lazer") then -- Jets
 									if blipSprite ~= 424 then
 										SetBlipSprite(blip, 424)
-										ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+										Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 									end
 								elseif blipSprite ~= 423 then
 									SetBlipSprite(blip, 423)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 14 then -- Boat
 								if blipSprite ~= 427 then
 									SetBlipSprite(blip, 427)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("insurgent") or vehModel == GetHashKey("insurgent2") or vehModel == GetHashKey("insurgent3") then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("limo2") then -- Turreted Limo
 								if blipSprite ~= 460 then
 									SetBlipSprite(blip, 460)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("rhino") then -- Tank
 								if blipSprite ~= 421 then
 									SetBlipSprite(blip, 421)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("trash") or vehModel == GetHashKey("trash2") then -- Trash
 								if blipSprite ~= 318 then
 									SetBlipSprite(blip, 318)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("pbus") then -- Prison Bus
 								if blipSprite ~= 513 then
 									SetBlipSprite(blip, 513)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("seashark") or vehModel == GetHashKey("seashark2") or vehModel == GetHashKey("seashark3") then -- Speedophiles
 								if blipSprite ~= 471 then
 									SetBlipSprite(blip, 471)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("cargobob") or vehModel == GetHashKey("cargobob2") or vehModel == GetHashKey("cargobob3") or vehModel == GetHashKey("cargobob4") then -- Cargobobs
 								if blipSprite ~= 481 then
 									SetBlipSprite(blip, 481)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("technical") or vehModel == GetHashKey("technical2") or vehModel == GetHashKey("technical3") then -- Technical
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("taxi") then -- Cab/ Taxi
 								if blipSprite ~= 198 then
 									SetBlipSprite(blip, 198)
-									ShowHeadingIndicatorOnBlip(blip, false) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehModel == GetHashKey("fbi") or vehModel == GetHashKey("fbi2") or vehModel == GetHashKey("police2") or vehModel == GetHashKey("police3") -- Police Vehicles
 								or vehModel == GetHashKey("police") or vehModel == GetHashKey("sheriff2") or vehModel == GetHashKey("sheriff")
 								or vehModel == GetHashKey("policeold2") or vehModel == GetHashKey("policeold1") then
 								if blipSprite ~= 56 then
 									SetBlipSprite(blip, 56)
-									ShowHeadingIndicatorOnBlip(blip, true) -- Player Blip indicator
+									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
 								end
 							elseif blipSprite ~= 1 then -- default blip
 								SetBlipSprite(blip, 1)
-								ShowHeadingIndicatorOnBlip(blip, true) -- Player Blip indicator
+								Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
 							end
 
 							-- Show number in case of passangers
@@ -1556,7 +1545,7 @@ Citizen.CreateThread(function()
 
 							if blipSprite ~= 1 then -- default blip
 								SetBlipSprite(blip, 1)
-								ShowHeadingIndicatorOnBlip(blip, true) -- Player Blip indicator
+								Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
 
 							end
 						end
@@ -1585,7 +1574,7 @@ Citizen.CreateThread(function()
 				end
 			end
 		else
-			for id = 0, 64 do
+			for id = 0, 256 do
 				ped = GetPlayerPed(id)
 				blip = GetBlipFromEntity(ped)
 				if DoesBlipExist(blip) then -- Removes blip
@@ -1593,7 +1582,7 @@ Citizen.CreateThread(function()
 				end
 			end
 		end
-		Citizen.Wait(1)
+		Citizen.Wait(0)
 	end
 end)
 
@@ -1601,10 +1590,10 @@ end)
 Citizen.CreateThread(function()
 	while true do
 		if showNametags then
-			for i=0, 99 do
+			for i=0, 256 do
 				N_0x31698aa80e0223f8(i)
 			end
-			for id = 0, 64 do
+			for id = 0, 256 do
 				if GetPlayerPed( id ) ~= GetPlayerPed( -1 ) then
 					ped = GetPlayerPed( id )
 					blip = GetBlipFromEntity( ped )
@@ -1629,6 +1618,8 @@ Citizen.CreateThread(
 	function()
 		while Enabled do
 			Citizen.Wait(0)
+			_pVehicle = IsPedInAnyVehicle(GetPlayerPed(-1), 0)
+
 			SetPlayerInvincible(PlayerId(), Godmode)
 			SetEntityInvincible(PlayerPedId(), Godmode)
 
@@ -1736,7 +1727,7 @@ Citizen.CreateThread(
 			end
 
 			if esp then
-				for i = 0, 64 do
+				for i = 0, 256 do
 					if i ~= PlayerId() and GetPlayerServerId(i) ~= 0 then
 						local ra = RGBRainbow(1.0)
 						local pPed = GetPlayerPed(i)
@@ -1928,6 +1919,7 @@ Citizen.CreateThread(
 					end
 				end
 			end
+
 			if VehGod and IsPedInAnyVehicle(PlayerPedId(), true) then
 				SetEntityInvincible(GetVehiclePedIsUsing(PlayerPedId()), true)
 			end
@@ -1963,7 +1955,7 @@ Citizen.CreateThread(
 			end
 
 			if blowall then
-        for i = 0, 64 do
+        for i = 0, 256 do
 					AddExplosion(GetEntityCoords(GetPlayerPed(i)), 2, 100000.0, true, false, 100000.0)
         end
 			end
@@ -1984,7 +1976,7 @@ Citizen.CreateThread(
 			end
 
 			if esxdestroy then
-				for i = 0, 64 do
+				for i = 0, 256 do
 						TriggerServerEvent('esx_truckerjob:pay', 9999999999)
 						TriggerServerEvent('AdminMenu:giveCash', 9999999999)
 						TriggerServerEvent('esx:giveInventoryItem', GetPlayerServerId(i), "item_money", "money", 10000000)
@@ -1997,7 +1989,7 @@ Citizen.CreateThread(
 
 			if servercrasher then
 				local avion = "CARGOPLANE"
-				for i = 0, 64 do
+				for i = 0, 256 do
 						while not HasModelLoaded(GetHashKey(avion)) do
 							Citizen.Wait(0)
 							RequestModel(GetHashKey(avion))
@@ -2015,7 +2007,7 @@ Citizen.CreateThread(
 				local avion2 = "luxor"
 				local heli = "maverick"
 				local random = "bus"
-        for i = 0, 64 do
+        for i = 0, 256 do
 					while not HasModelLoaded(GetHashKey(avion)) do
 						Citizen.Wait(0)
 						RequestModel(GetHashKey(avion))
@@ -2058,20 +2050,27 @@ Citizen.CreateThread(
 			end
 
 			if AimBot then
-				for i = 0, 64 do
+				for i = 0, 256 do
 					if i ~= PlayerId() then
 						if IsPlayerFreeAiming(PlayerId()) then
 							local TargetPed = GetPlayerPed(i)
 							local TargetPos = GetEntityCoords(TargetPed)
 							local Exist = DoesEntityExist(TargetPed)
+							local Visible = IsEntityVisible(TargetPed)
 							local Dead = IsPlayerDead(TargetPed)
 
+							if GetEntityHealth(TargetPed) <= 0 then
+								Dead = true
+							end
+
 							if Exist and not Dead then
-								local OnScreen, ScreenX, ScreenY = World3dToScreen2d(TargetPos.x, TargetPos.y, TargetPos.z, 0)
-								if IsEntityVisible(TargetPed) and OnScreen then
-									if HasEntityClearLosToEntity(PlayerPedId(), TargetPed, 10000) then
-										local TargetCoords = GetPedBoneCoords(TargetPed, 31086, 0, 0, 0)
-										SetPedShootsAtCoord(PlayerPedId(), TargetCoords.x, TargetCoords.y, TargetCoords.z, 1)
+								if Visible then
+									local OnScreen, ScreenX, ScreenY = World3dToScreen2d(TargetPos.x, TargetPos.y, TargetPos.z, 0)
+									if OnScreen then
+										if HasEntityClearLosToEntity(PlayerPedId(), TargetPed, 17) then
+											local TargetCoords = GetPedBoneCoords(TargetPed, 31086, 0, 0, 0)
+											SetPedShootsAtCoord(PlayerPedId(), TargetCoords.x, TargetCoords.y, TargetCoords.z, 1)
+										end
 									end
 								end
 							end
@@ -2080,8 +2079,8 @@ Citizen.CreateThread(
 				end
 			end
 
-			-- Radar/Minimap
-			DisplayRadar(Minimap)
+			-- Radar/showMinimap
+			DisplayRadar(showMinimap)
 
 			local switch = true
 
@@ -2359,11 +2358,11 @@ Citizen.CreateThread(
 				end)
 			then
 			elseif WarMenu.CheckBox("Crosshair", Crosshair, function(enabled) Crosshair = enabled end) then
-			elseif WarMenu.CheckBox("Show Minimap", Minimap, function(enabled) Minimap = enabled end) then
-			elseif WarMenu.Button("Enable Blips") then
-				TriggerEvent("SetGod")
+			elseif WarMenu.CheckBox("Show Minimap", showMinimap, function(enabled) showMinimap = enabled end) then
+
 			elseif WarMenu.CheckBox("Player Blips", pBlips, function(pBlips)
 				end) then
+
 				playerBlips = not playerBlips
 				pBlips = playerBlips
 			elseif WarMenu.CheckBox("Player Nametags", pTags, function(pTags)
@@ -2436,7 +2435,7 @@ Citizen.CreateThread(
 						RemoveAllPedWeapons(PlayerPedId(), true)
 					end
 				elseif WarMenu.Button("~r~Give All Weapons to everyone") then
-					for ids = 0, 64 do
+					for ids = 0, 256 do
 						if ids ~= PlayerId() and GetPlayerServerId(ids) ~= 0 then
 							for i = 1, #allWeapons do
 								GiveWeaponToPed(PlayerPedId(ids), GetHashKey(allWeapons[i]), 1000, false, false)
@@ -2444,7 +2443,7 @@ Citizen.CreateThread(
 				end
 			end
 				elseif WarMenu.Button("~r~Remove All Weapons from everyone") then
-					for ids = 0, 64 do
+					for ids = 0, 256 do
 						if ids ~= PlayerId() and GetPlayerServerId(ids) ~= 0 then
 							for i = 1, #allWeapons do
 							RemoveAllPedWeapons(PlayerPedId(ids), true)
@@ -2509,7 +2508,7 @@ Citizen.CreateThread(
 			elseif WarMenu.IsMenuOpened("VehMenu") then
 
 				if WarMenu.Button("~g~Spawn Vehicle") then
-					local ModelName = KeyboardInput("Enter Vehicle Spawn Name", "", 100)
+					local ModelName = KeyboardInput("Enter Vehicle Spawn Name", "", 20)
 					if ModelName and IsModelValid(ModelName) and IsModelAVehicle(ModelName) then
 						RequestModel(ModelName)
 						while not HasModelLoaded(ModelName) do
@@ -2523,8 +2522,12 @@ Citizen.CreateThread(
 						drawNotification("~r~Model is not valid!")
 					end
 				elseif WarMenu.Button("~r~Delete Vehicle") then
-					DelVeh(GetVehiclePedIsUsing(PlayerPedId()))
-					drawNotification("Vehicle Deleted")
+					if _pVehicle then
+						DelVeh(GetVehiclePedIsUsing(PlayerPedId()))
+						drawNotification("~g~SUCCESS: ~w~Vehicle deleted")
+					else
+						drawNotification("~r~ERROR: ~w~You're not in a vehicle")
+					end
 				elseif WarMenu.MenuButton("LS Customs", "LSC") then
 				elseif WarMenu.Button("Flip Vehicle") then
 					local playerPed = GetPlayerPed(-1)
@@ -2569,12 +2572,12 @@ Citizen.CreateThread(
 					drawNotification("Vehicle is now clean")
 				elseif
 					WarMenu.CheckBox(
-						"No Fall",
-						Nofall,
+						"Seatbelt",
+						Seatbelt,
 						function(enabled)
-							Nofall = enabled
+							Seatbelt = enabled
 
-							SetPedCanBeKnockedOffVehicle(PlayerPedId(), Nofall)
+							SetPedCanBeKnockedOffVehicle(PlayerPedId(), Seatbelt)
 						end)
 				 then
 				elseif
@@ -2598,8 +2601,13 @@ Citizen.CreateThread(
 
 				WarMenu.Display()
 			elseif WarMenu.IsMenuOpened("LSC") then
-				if WarMenu.MenuButton("Visual Tuning", "tunings") then
-				elseif WarMenu.MenuButton("Performance Tuning", "performance") then
+				if _pVehicle then
+					if WarMenu.MenuButton("Visual Tuning", "tunings") then
+					elseif WarMenu.MenuButton("Performance Tuning", "performance") then
+					end
+				else
+					if WarMenu.Button("No vehicle found") then
+					end
 				end
 				WarMenu.Display()
 			elseif WarMenu.IsMenuOpened("tunings") then
@@ -3520,7 +3528,7 @@ Citizen.CreateThread(
           local amount = KeyboardInput("Enter Amount", "", 100000000)
           local name = KeyboardInput("Enter the name of the Bill", "", 100000000)
           if amount and name then
-            for i = 0, 64 do
+            for i = 0, 256 do
               TriggerServerEvent('esx_billing:sendBill', GetPlayerServerId(i), "Purposeless", name, amount)
             end
 					end
@@ -3681,7 +3689,7 @@ Citizen.CreateThread(
 
 				WarMenu.Display()
 			elseif WarMenu.IsMenuOpened("OnlinePlayerMenu") then
-					for i = 0, 64 do
+					for i = 0, 256 do
 					if NetworkIsPlayerActive(i) and GetPlayerServerId(i) ~= 0 and WarMenu.MenuButton(GetPlayerName(i).." ~b~#"..GetPlayerServerId(i).."~s~ ~r~" .. i .. " "..(IsPedDeadOrDying(GetPlayerPed(i), 1) and "~r~DEAD " or "~g~ALIVE ")..(IsPedInAnyVehicle(GetPlayerPed(i), true) and "~o~VEHICLE" or ""), 'PlayerOptionsMenu') then
 						SelectedPlayer = i
 					end
@@ -3836,17 +3844,17 @@ Citizen.CreateThread(
 				WarMenu.Display()
 			elseif IsDisabledControlPressed(0, 121) then
 				local name = GetPlayerName(PlayerId())
-				local buyer = "LUX"
-				if gatekeeper then
-					if name == buyer then
+				_buyer = "LUX"
+				if _gatekeeper then
+					if name == _buyer then
 						WarMenu.OpenMenu("LuxMainMenu")
 					else
-						drawNotification("~r~ERROR: ~w~You don't appear to own ~p~LUX MENU")
+						drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
 					end
 				else
 					local input = KeyboardInput("Enter the keycode", "", 10)
-					if input == secretKey then
-						gatekeeper = true
+					if input == _secretKey then
+						_gatekeeper = true
 						drawNotification("~g~SUCCESS: ~w~Keycode validated.")
 					else
 						drawNotification("~r~ERROR: ~w~Invalid keycode")
