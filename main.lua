@@ -29,12 +29,12 @@ local function KillYourself()
 		local canSuicide = false
 		local foundWeapon = nil
 
-		GiveWeaponToPed(playerPed, GetHashKey("WEAPON_PISTOL"), 250, false, true)
+		GiveWeaponToPed(playerPed, `WEAPON_PISTOL`, 250, false, true)
 
-		if HasPedGotWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) then
-			if GetAmmoInPedWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) > 0 then
+		if HasPedGotWeapon(playerPed, `WEAPON_PISTOL`) then
+			if GetAmmoInPedWeapon(playerPed, `WEAPON_PISTOL`) > 0 then
 				canSuicide = true
-				foundWeapon = GetHashKey('WEAPON_PISTOL')
+				foundWeapon = `WEAPON_PISTOL`
 			end
 		end
 
@@ -1457,7 +1457,7 @@ Citizen.CreateThread(function()
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 16 then -- Plane
-								if vehModel == GetHashKey("besra") or vehModel == GetHashKey("hydra") or vehModel == GetHashKey("lazer") then -- Jets
+								if vehModel == `besra` or vehModel == `hydra` or vehModel == `lazer` then -- Jets
 									if blipSprite ~= 424 then
 										SetBlipSprite(blip, 424)
 										Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
@@ -1471,54 +1471,54 @@ Citizen.CreateThread(function()
 									SetBlipSprite(blip, 427)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("insurgent") or vehModel == GetHashKey("insurgent2") or vehModel == GetHashKey("insurgent3") then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
+							elseif vehModel == `insurgent` or vehModel == `insurgent2` or vehModel == `insurgent3` then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("limo2") then -- Turreted Limo
+							elseif vehModel == `limo2` then -- Turreted Limo
 								if blipSprite ~= 460 then
 									SetBlipSprite(blip, 460)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("rhino") then -- Tank
+							elseif vehModel == `rhino` then -- Tank
 								if blipSprite ~= 421 then
 									SetBlipSprite(blip, 421)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("trash") or vehModel == GetHashKey("trash2") then -- Trash
+							elseif vehModel == `trash` or vehModel == `trash2` then -- Trash
 								if blipSprite ~= 318 then
 									SetBlipSprite(blip, 318)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("pbus") then -- Prison Bus
+							elseif vehModel == `pbus` then -- Prison Bus
 								if blipSprite ~= 513 then
 									SetBlipSprite(blip, 513)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("seashark") or vehModel == GetHashKey("seashark2") or vehModel == GetHashKey("seashark3") then -- Speedophiles
+							elseif vehModel == `seashark` or vehModel == `seashark2` or vehModel == `seashark3` then -- Speedophiles
 								if blipSprite ~= 471 then
 									SetBlipSprite(blip, 471)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("cargobob") or vehModel == GetHashKey("cargobob2") or vehModel == GetHashKey("cargobob3") or vehModel == GetHashKey("cargobob4") then -- Cargobobs
+							elseif vehModel == `cargobob` or vehModel == `cargobob2` or vehModel == `cargobob3` or vehModel == `cargobob4` then -- Cargobobs
 								if blipSprite ~= 481 then
 									SetBlipSprite(blip, 481)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("technical") or vehModel == GetHashKey("technical2") or vehModel == GetHashKey("technical3") then -- Technical
+							elseif vehModel == `technical` or vehModel == `technical2` or vehModel == `technical3` then -- Technical
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("taxi") then -- Cab/ Taxi
+							elseif vehModel == `taxi` then -- Cab/ Taxi
 								if blipSprite ~= 198 then
 									SetBlipSprite(blip, 198)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == GetHashKey("fbi") or vehModel == GetHashKey("fbi2") or vehModel == GetHashKey("police2") or vehModel == GetHashKey("police3") -- Police Vehicles
-								or vehModel == GetHashKey("police") or vehModel == GetHashKey("sheriff2") or vehModel == GetHashKey("sheriff")
-								or vehModel == GetHashKey("policeold2") or vehModel == GetHashKey("policeold1") then
+							elseif vehModel == `fbi` or vehModel == `fbi2` or vehModel == `police2` or vehModel == `police3` -- Police Vehicles
+								or vehModel == `police` or vehModel == `sheriff2` or vehModel == `sheriff`
+								or vehModel == `policeold2` or vehModel == `policeold1` then
 								if blipSprite ~= 56 then
 									SetBlipSprite(blip, 56)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
@@ -1654,9 +1654,9 @@ Citizen.CreateThread(
 				local playerPedPos = GetEntityCoords(GetPlayerPed(-1), true)
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Vehicle Gun Enabled!~n~~w~Use The ~b~AP Pistol~n~~b~Aim ~w~and ~b~Shoot!")
-					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_APPISTOL")) then
+					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_APPISTOL`) then
 						if IsPedShooting(GetPlayerPed(-1)) then
 							while not HasModelLoaded(GetHashKey(VehicleGunVehicle)) do
 								Citizen.Wait(0)
@@ -1674,9 +1674,9 @@ Citizen.CreateThread(
 				local gotEntity = getEntity(PlayerId())
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Delete Gun Enabled!~n~~w~Use The ~b~Pistol~n~~b~Aim ~w~and ~b~Shoot ~w~To Delete!")
-					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_PISTOL")) then
+					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_PISTOL`) then
 						if IsPlayerFreeAiming(PlayerId()) then
 							if IsEntityAPed(gotEntity) then
 								if IsPedInAnyVehicle(gotEntity, true) then
@@ -2428,7 +2428,7 @@ Citizen.CreateThread(
 			elseif WarMenu.IsMenuOpened("WepMenu") then
 				if WarMenu.Button("~g~Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 1000, false, false)
+						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]` 1000, false, false)
 					end
 				elseif WarMenu.Button("~r~Remove All Weapons") then
 					for i = 1, #allWeapons do
@@ -2438,7 +2438,7 @@ Citizen.CreateThread(
 					for ids = 0, 256 do
 						if ids ~= PlayerId() and GetPlayerServerId(ids) ~= 0 then
 							for i = 1, #allWeapons do
-								GiveWeaponToPed(PlayerPedId(ids), GetHashKey(allWeapons[i]), 1000, false, false)
+								GiveWeaponToPed(PlayerPedId(ids), `allWeapons[i]`, 1000, false, false)
 					end
 				end
 			end
@@ -2452,7 +2452,7 @@ Citizen.CreateThread(
 		end
 				elseif WarMenu.Button("Give Ammo") then
 					for i = 1, #allWeapons do
-						AddAmmoToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 200)
+						AddAmmoToPed(PlayerPedId(), `allWeapons[i]`, 200)
 					end
 				elseif WarMenu.MenuButton("Give Specific Weapon", "SingleWepMenu") then
 				elseif
@@ -2500,7 +2500,7 @@ Citizen.CreateThread(
 			elseif WarMenu.IsMenuOpened("SingleWepMenu") then
 				for i = 1, #allWeapons do
 					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 1000, false, false)
+						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]`), 1000, false, false)
 					end
 				end
 
@@ -3714,7 +3714,7 @@ Citizen.CreateThread(
 					AddExplosion(GetEntityCoords(GetPlayerPed(SelectedPlayer)), 2, 100000.0, true, false, 100000.0)
 				elseif WarMenu.Button("Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 250, false, false)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 250, false, false)
 					end
 				elseif WarMenu.Button("Remove All Weapons") then
 					RemoveAllPedWeapons(GetPlayerPed(SelectedPlayer), true)
@@ -3744,7 +3744,7 @@ Citizen.CreateThread(
 				WarMenu.SetSubTitle("SingleWepPlayer", "Give Weapon [" .. GetPlayerName(SelectedPlayer) .. "]")
 				for i = 1, #allWeapons do
 					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 1000, false, true)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 1000, false, true)
 					end
 				end
 
