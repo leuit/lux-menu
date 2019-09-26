@@ -1,5 +1,4 @@
 -- Globals
-
 -- Menu color customization
 local _menuColor
 
@@ -7,6 +6,13 @@ local _menuColor
 local _buyer
 local _secretKey = "devbuild"
 local _gatekeeper = false
+local _auth = false
+
+-- Fullscreen Notification builder
+local _notifTitle = "~p~LUX MENU"
+local _notifMsg = "We must authenticate your license before you proceed"
+local _notifMsg2 = "~g~Please enter your unique key code"
+local _errorCode = 0
 
 -- BOOL if the player is in a vehicle
 local _pVehicle = false
@@ -14,12 +20,32 @@ local _pVehicle = false
 -- Init variables
 local showMinimap = true
 
+-- [NOTE] Weapon Table
+local t_Weapons = {
+	-- Melee
+	WEAPON_KNIFE = {"Knife", "w_me_knife_01", "mpweaponsunusedfornow"},
+	WEAPON_NIGHTSTICK = {"Nightstick", "w_me_nightstick", "mpweaponsunusedfornow"},
+	WEAPON_HAMMER = {"Hammer", "w_me_hammer", "mpweaponsunusedfornow"},
+	WEAPON_BAT = {"Bat", "w_me_bat", "mpweaponsunusedfornow"},
+	WEAPON_GOLFCLUB = {"Golf Club", "w_me_gclub", "mpweaponsunusedfornow"},
+	WEAPON_CROWBAR = {"Crowbar", "w_me_crowbar", "mpweaponsunusedfornow"},
+	WEAPON_BOTTLE,
+	WEAPON_DAGGER,
+	WEAPON_HATCHET,
+	WEAPON_MACHETE,
+	WEAPON_FLASHLIGHT,
+	WEAPON_SWITCHBLADE,
+}
+
+local _weaponSprite = ""
 local colorRed = { r = 231, g = 76, b = 60, a = 255 } -- rgb(231, 76, 60)
 local colorGreen = { r = 46, g = 204, b = 113, a = 255 } -- rgb(46, 204, 113)
 local colorBlue = { r = 52, g = 152, b = 219, a = 255 } -- rgb(52, 152, 219)
 local colorPurple = { r = 155, g = 89, b = 182, a = 255 } -- rgb(155, 89, 182)
 
 _menuColor = colorPurple
+
+local license = get
 
 
 local function KillYourself()
@@ -382,7 +408,7 @@ end
 
 WarMenu = {}
 
-WarMenu.debug = false
+WarMenu.debug = true
 
 local function RGBRainbow(frequency)
 	local result = {}
@@ -478,7 +504,10 @@ local function drawRect(x, y, width, height, color)
 	DrawRect(x, y, width, height, color.r, color.g, color.b, color.a)
 end
 
+-- [NOTE] MenuDrawTitle
 local function drawTitle()
+	SetScriptGfxDrawOrder(1)
+
 	if menus[currentMenu] then
 		local x = menus[currentMenu].x + menuWidth / 2
 		local y = menus[currentMenu].y + titleHeight / 2
@@ -489,6 +518,19 @@ local function drawTitle()
 			else
 				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
 			end
+		elseif menus[currentMenu].background == "weaponlist" then
+			RequestStreamedTextureDict("commonmenu")
+			if _menuColor == colorPurple then
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, 255, 76, 60, 255) -- 255, 76, 60,
+			else
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
+			end
+
+			RequestStreamedTextureDict("mpweaponscommon")
+			RequestStreamedTextureDict("mpweaponsgang0")
+			RequestStreamedTextureDict("mpweaponsgang1")
+			RequestStreamedTextureDict("mpweaponsunusedfornow")
+			 -- rgb(155, 89, 182)
 		elseif menus[currentMenu].titleBackgroundSprite then
 			DrawSprite(
 				menus[currentMenu].titleBackgroundSprite.dict,
@@ -589,6 +631,7 @@ local function drawFooter()
 	end
 end
 
+-- [NOTE] MenuDrawButton
 local function drawButton(text, subText)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
@@ -607,7 +650,7 @@ local function drawButton(text, subText)
 	end
 
 	if multiplier then
-		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2 + 0.0020 -- 0.0025 is the offset for the line under subTitle
 		local backgroundColor = nil
 		local textColor = nil
 		local subTextColor = nil
@@ -672,15 +715,26 @@ local function drawButton(text, subText)
 		elseif text == "Server Options" then
 			RequestStreamedTextureDict("mpleaderboard")
 			DrawSprite("mpleaderboard", "leaderboard_globe_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 155, 89, 182, 255) -- rgb(155, 89, 182)
-	--	elseif text == "~b~Menu Settings" then
-	--		RequestStreamedTextureDict("mpleaderboard")
-	--		DrawSprite("mpleaderboard", "leaderboard_time_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 255, 255, 255, 255) -- rgb(155, 89, 182)
+		elseif menus[currentMenu].subTitle == "GIVE SINGLE WEAPON" then
+			-- loop through weapon names
+			menus[currentMenu].title = ""
+			menus[currentMenu].background = "weaponlist"
 		end
 
 
 		if subText == "isMenu" then
 			RequestStreamedTextureDict("commonmenu")
 			DrawSprite("commonmenu", "arrowright", x + menuWidth / 2.3, y, 0.02, buttonHeight, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+		elseif subText == "isWeapon" then
+			local x = menus[currentMenu].x + menuWidth / 2
+			local y = menus[currentMenu].y + titleHeight / 2 + titleYOffset - 0.02
+			for hash, v in pairs(t_Weapons) do
+				if text == v[1] then
+					SetScriptGfxDrawOrder(50)
+					RequestStreamedTextureDict(v[3])
+					DrawSprite(v[3], v[2], x, y, 0.10, 0.10, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+				end
+			end
 
 		elseif subText then
 			drawText(
@@ -845,7 +899,7 @@ function WarMenu.Button(text, subText)
 		buttonText = "{ " .. tostring(buttonText) .. ", " .. tostring(subText) .. " }"
 	end
 
-	if menus[currentMenu] then
+	if menus[currentMenu]  then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
@@ -943,7 +997,6 @@ function WarMenu.Display()
 			WarMenu.CloseMenu()
 		else
 			ClearAllHelpMessages()
-
 			drawTitle()
 			drawSubTitle()
 			drawFooter()
@@ -1116,6 +1169,8 @@ function drawNotification(text)
 	DrawNotification(false, false)
 end
 
+
+
 local allWeapons = {
 	"WEAPON_KNIFE",
 	"WEAPON_KNUCKLE",
@@ -1185,9 +1240,7 @@ local allWeapons = {
 	"WEAPON_MOLOTOV",
 	"WEAPON_FIREEXTINGUISHER",
 	"WEAPON_PETROLCAN",
-	"WEAPON_SNOWBALL",
 	"WEAPON_FLARE",
-	"WEAPON_BALL"
 }
 
 local Enabled = true
@@ -1392,6 +1445,48 @@ function DrawSpecialText(m_text, showtime)
 end
 
 -- MAIN CODE --
+function displayHelp(text)
+end
+
+-- Scaleform Drawing Thread
+
+-- Add an event handler for when the screen is dismissed.
+AddEventHandler("optionSelected", function(selected)
+    print(selected) -- do whatever you want with the selected choice.
+    -- players can either press the physicial buttons, or they can click
+    -- the instructional buttons with their mouse and it will trigger
+	-- the event as well.
+	GateKeep()
+end)
+
+-- Create a thread to loop this warning message.
+-- [NOTE] POPUP AUTH WARNING
+Citizen.CreateThread(function()
+	while true do
+		Citizen.Wait(0)
+		AddTextEntry("FACES_WARNH2", _notifTitle)
+		AddTextEntry("QM_NO_0", _notifMsg)
+		AddTextEntry("QM_NO_3", _notifMsg2)
+
+		while not _gatekeeper and not _auth do
+			Citizen.Wait(0)
+			-- Display the warning message every tick.
+			DrawFrontendAlert("FACES_WARNH2", "QM_NO_0", 2, 0, "QM_NO_3", 2, -1, false, "FM_NXT_RAC", "QM_NO_1", true, _errorCode)
+			-- Check for key presses or instructional button clicks.
+			-- Input group of 2 is required for this to work while the warning is being displayed.
+			
+			if (IsControlJustReleased(2, 201) or IsControlJustReleased(2, 217)) then -- any select/confirm key was pressed.
+				TriggerEvent("optionSelected", "select")
+				break
+			elseif (IsControlJustReleased(2, 203)) then -- spacebar/x on controller (alt option) was pressed.
+				TriggerEvent("optionSelected", "alt")
+				break
+			end
+			--drawscaleform("POPUP_WARNING")
+		end
+	end
+end)
+
 
 -- Player Blips
 Citizen.CreateThread(function()
@@ -2497,10 +2592,11 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
+				-- [NOTE] Local Weapon Menu
 			elseif WarMenu.IsMenuOpened("SingleWepMenu") then
-				for i = 1, #allWeapons do
-					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 1000, false, false)
+				for hash, v in pairs(t_Weapons) do
+					if WarMenu.Button(v[1], "isWeapon") then
+						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
 					end
 				end
 
@@ -3843,29 +3939,40 @@ Citizen.CreateThread(
 				end
 				WarMenu.Display()
 			elseif IsDisabledControlPressed(0, 121) then
-				local name = GetPlayerName(PlayerId())
-				_buyer = "LUX"
-				if _gatekeeper then
-					if name == _buyer then
-						WarMenu.OpenMenu("LuxMainMenu")
-					else
-						drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
-					end
-				else
-					local input = KeyboardInput("Enter the keycode", "", 10)
-					if input == _secretKey then
-						_gatekeeper = true
-						drawNotification("~g~SUCCESS: ~w~Keycode validated.")
-					else
-						drawNotification("~r~ERROR: ~w~Invalid keycode")
-					end
-				end
+				GateKeep()
 			end
 
 			Citizen.Wait(0)
 		end
 	end
 )
+
+function GateKeep()
+	local name = GetPlayerName(PlayerId())
+	_buyer = "leuit"
+	if _gatekeeper then
+		if name == _buyer then
+			WarMenu.OpenMenu("LuxMainMenu")
+		else
+			_auth = false
+			drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
+		end
+	else
+		_auth = true
+		local input = KeyboardInput("Enter the keycode", "", 10)
+		if input == _secretKey then
+			_gatekeeper = true
+			drawNotification("~g~SUCCESS: ~w~Keycode validated.")
+		else
+			_auth = false
+			_notifTitle = "~r~AUTHENTICATION FAILURE"
+			_notifMsg = "Your key is invalid!"
+			_notifMsg2 = ""
+			_errorCode = 1
+			drawNotification("~r~ERROR: ~w~Invalid keycode")
+		end
+	end
+end
 
 RegisterCommand("killmenu", function(source,args,raw)
 	Enabled = false
