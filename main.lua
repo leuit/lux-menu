@@ -1,14 +1,10 @@
 -- Globals
-
 -- Menu color customization
 local _menuColor
 
 -- License key validation for LUX
 local _buyer
 local _secretKey = "devbuild"
-<<<<<<< Updated upstream
-local _gatekeeper = false
-=======
 local _gatekeeper = true
 local _auth = false
 
@@ -17,7 +13,6 @@ local _notifTitle = "~p~LUX MENU"
 local _notifMsg = "We must authenticate your license before you proceed"
 local _notifMsg2 = "~g~Please enter your unique key code"
 local _errorCode = 0
->>>>>>> Stashed changes
 
 -- Global BOOL if the player is in a vehicle
 local _pVehicle = false
@@ -25,8 +20,6 @@ local _pVehicle = false
 -- Init variables
 local showMinimap = true
 
-<<<<<<< Updated upstream
-=======
 -- [NOTE] Weapon Table
 local t_Weapons = {
 	-- Melee
@@ -45,7 +38,6 @@ local t_Weapons = {
 }
 
 local _weaponSprite = ""
->>>>>>> Stashed changes
 local colorRed = { r = 231, g = 76, b = 60, a = 255 } -- rgb(231, 76, 60)
 local colorGreen = { r = 46, g = 204, b = 113, a = 255 } -- rgb(46, 204, 113)
 local colorBlue = { r = 52, g = 152, b = 219, a = 255 } -- rgb(52, 152, 219)
@@ -53,10 +45,6 @@ local colorPurple = { r = 155, g = 89, b = 182, a = 255 } -- rgb(155, 89, 182)
 -- Set a default menu theme
 _menuColor = colorPurple
 
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 local function KillYourself()
 	Citizen.CreateThread(function()
 		local playerPed = GetPlayerPed(-1)
@@ -64,12 +52,12 @@ local function KillYourself()
 		local canSuicide = false
 		local foundWeapon = nil
 
-		GiveWeaponToPed(playerPed, `WEAPON_PISTOL`, 250, false, true)
+		GiveWeaponToPed(playerPed, GetHashKey("WEAPON_PISTOL"), 250, false, true)
 
-		if HasPedGotWeapon(playerPed, `WEAPON_PISTOL`) then
-			if GetAmmoInPedWeapon(playerPed, `WEAPON_PISTOL`) > 0 then
+		if HasPedGotWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) then
+			if GetAmmoInPedWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) > 0 then
 				canSuicide = true
-				foundWeapon = `WEAPON_PISTOL`
+				foundWeapon = GetHashKey('WEAPON_PISTOL')
 			end
 		end
 
@@ -417,7 +405,7 @@ end
 
 WarMenu = {}
 
-WarMenu.debug = false
+WarMenu.debug = true
 
 local function RGBRainbow(frequency)
 	local result = {}
@@ -513,7 +501,10 @@ local function drawRect(x, y, width, height, color)
 	DrawRect(x, y, width, height, color.r, color.g, color.b, color.a)
 end
 
+-- [NOTE] MenuDrawTitle
 local function drawTitle()
+	SetScriptGfxDrawOrder(1)
+
 	if menus[currentMenu] then
 		local x = menus[currentMenu].x + menuWidth / 2
 		local y = menus[currentMenu].y + titleHeight / 2
@@ -524,6 +515,19 @@ local function drawTitle()
 			else
 				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
 			end
+		elseif menus[currentMenu].background == "weaponlist" then
+			RequestStreamedTextureDict("commonmenu")
+			if _menuColor == colorPurple then
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, 255, 76, 60, 255) -- 255, 76, 60,
+			else
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
+			end
+
+			RequestStreamedTextureDict("mpweaponscommon")
+			RequestStreamedTextureDict("mpweaponsgang0")
+			RequestStreamedTextureDict("mpweaponsgang1")
+			RequestStreamedTextureDict("mpweaponsunusedfornow")
+			 -- rgb(155, 89, 182)
 		elseif menus[currentMenu].titleBackgroundSprite then
 			DrawSprite(
 				menus[currentMenu].titleBackgroundSprite.dict,
@@ -624,6 +628,7 @@ local function drawFooter()
 	end
 end
 
+-- [NOTE] MenuDrawButton
 local function drawButton(text, subText)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
@@ -642,7 +647,7 @@ local function drawButton(text, subText)
 	end
 
 	if multiplier then
-		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2 + 0.0020 -- 0.0025 is the offset for the line under subTitle
 		local backgroundColor = nil
 		local textColor = nil
 		local subTextColor = nil
@@ -706,24 +711,27 @@ local function drawButton(text, subText)
 			DrawSprite("mpleaderboard", "leaderboard_kd_icon", x - menuWidth / 2.20, y, 0.02, buttonHeight - 0.010, 0.0, 231, 76, 60, 255) -- rgb(231, 76, 60)
 		elseif text == "Server Options" then
 			RequestStreamedTextureDict("mpleaderboard")
-<<<<<<< Updated upstream
-			DrawSprite("mpleaderboard", "leaderboard_globe_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 155, 89, 182, 255) -- rgb(155, 89, 182)
-	--	elseif text == "~b~Menu Settings" then
-	--		RequestStreamedTextureDict("mpleaderboard")
-	--		DrawSprite("mpleaderboard", "leaderboard_time_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 255, 255, 255, 255) -- rgb(155, 89, 182)
-=======
 			DrawSprite("mpleaderboard", "leaderboard_globe_icon", x - menuWidth / 2.20, y, 0.02, buttonHeight - 0.010, 0.0, 155, 89, 182, 255) -- rgb(155, 89, 182)
 		elseif menus[currentMenu].subTitle == "MELEE WEAPONS" then
 			-- loop through weapon names
 			menus[currentMenu].title = ""
 			menus[currentMenu].background = "weaponlist"
->>>>>>> Stashed changes
 		end
 
 
 		if subText == "isMenu" then
 			RequestStreamedTextureDict("commonmenu")
 			DrawSprite("commonmenu", "arrowright", x + menuWidth / 2.3, y, 0.02, buttonHeight, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+		elseif subText == "isWeapon" then
+			local x = menus[currentMenu].x + menuWidth / 2
+			local y = menus[currentMenu].y + titleHeight / 2 + titleYOffset - 0.02
+			for hash, v in pairs(t_Weapons) do
+				if text == v[1] then
+					SetScriptGfxDrawOrder(50)
+					RequestStreamedTextureDict(v[3])
+					DrawSprite(v[3], v[2], x, y, 0.10, 0.10, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+				end
+			end
 
 		elseif subText then
 			drawText(
@@ -888,7 +896,7 @@ function WarMenu.Button(text, subText)
 		buttonText = "{ " .. tostring(buttonText) .. ", " .. tostring(subText) .. " }"
 	end
 
-	if menus[currentMenu] then
+	if menus[currentMenu]  then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
@@ -986,7 +994,6 @@ function WarMenu.Display()
 			WarMenu.CloseMenu()
 		else
 			ClearAllHelpMessages()
-
 			drawTitle()
 			drawSubTitle()
 			drawFooter()
@@ -1161,6 +1168,8 @@ function drawNotification(text)
 	DrawNotification(false, false)
 end
 
+
+
 local allWeapons = {
 	"WEAPON_KNIFE",
 	"WEAPON_KNUCKLE",
@@ -1230,9 +1239,7 @@ local allWeapons = {
 	"WEAPON_MOLOTOV",
 	"WEAPON_FIREEXTINGUISHER",
 	"WEAPON_PETROLCAN",
-	"WEAPON_SNOWBALL",
 	"WEAPON_FLARE",
-	"WEAPON_BALL"
 }
 
 local Enabled = true
@@ -1437,6 +1444,48 @@ function DrawSpecialText(m_text, showtime)
 end
 
 -- MAIN CODE --
+function displayHelp(text)
+end
+
+-- Scaleform Drawing Thread
+
+-- Add an event handler for when the screen is dismissed.
+AddEventHandler("optionSelected", function(selected)
+    print(selected) -- do whatever you want with the selected choice.
+    -- players can either press the physicial buttons, or they can click
+    -- the instructional buttons with their mouse and it will trigger
+	-- the event as well.
+	GateKeep()
+end)
+
+-- Create a thread to loop this warning message.
+-- [NOTE] POPUP AUTH WARNING
+Citizen.CreateThread(function()
+	while true do
+		Citizen.Wait(0)
+		AddTextEntry("FACES_WARNH2", _notifTitle)
+		AddTextEntry("QM_NO_0", _notifMsg)
+		AddTextEntry("QM_NO_3", _notifMsg2)
+
+		while not _gatekeeper and not _auth do
+			Citizen.Wait(0)
+			-- Display the warning message every tick.
+			DrawFrontendAlert("FACES_WARNH2", "QM_NO_0", 2, 0, "QM_NO_3", 2, -1, false, "FM_NXT_RAC", "QM_NO_1", true, _errorCode)
+			-- Check for key presses or instructional button clicks.
+			-- Input group of 2 is required for this to work while the warning is being displayed.
+			
+			if (IsControlJustReleased(2, 201) or IsControlJustReleased(2, 217)) then -- any select/confirm key was pressed.
+				TriggerEvent("optionSelected", "select")
+				break
+			elseif (IsControlJustReleased(2, 203)) then -- spacebar/x on controller (alt option) was pressed.
+				TriggerEvent("optionSelected", "alt")
+				break
+			end
+			--drawscaleform("POPUP_WARNING")
+		end
+	end
+end)
+
 
 -- Player Blips thread
 Citizen.CreateThread(function()
@@ -1502,7 +1551,7 @@ Citizen.CreateThread(function()
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 16 then -- Plane
-								if vehModel == `besra` or vehModel == `hydra` or vehModel == `lazer` then -- Jets
+								if vehModel == GetHashKey("besra") or vehModel == GetHashKey("hydra") or vehModel == GetHashKey("lazer") then -- Jets
 									if blipSprite ~= 424 then
 										SetBlipSprite(blip, 424)
 										Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
@@ -1516,54 +1565,54 @@ Citizen.CreateThread(function()
 									SetBlipSprite(blip, 427)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `insurgent` or vehModel == `insurgent2` or vehModel == `insurgent3` then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
+							elseif vehModel == GetHashKey("insurgent") or vehModel == GetHashKey("insurgent2") or vehModel == GetHashKey("insurgent3") then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `limo2` then -- Turreted Limo
+							elseif vehModel == GetHashKey("limo2") then -- Turreted Limo
 								if blipSprite ~= 460 then
 									SetBlipSprite(blip, 460)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `rhino` then -- Tank
+							elseif vehModel == GetHashKey("rhino") then -- Tank
 								if blipSprite ~= 421 then
 									SetBlipSprite(blip, 421)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `trash` or vehModel == `trash2` then -- Trash
+							elseif vehModel == GetHashKey("trash") or vehModel == GetHashKey("trash2") then -- Trash
 								if blipSprite ~= 318 then
 									SetBlipSprite(blip, 318)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `pbus` then -- Prison Bus
+							elseif vehModel == GetHashKey("pbus") then -- Prison Bus
 								if blipSprite ~= 513 then
 									SetBlipSprite(blip, 513)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `seashark` or vehModel == `seashark2` or vehModel == `seashark3` then -- Speedophiles
+							elseif vehModel == GetHashKey("seashark") or vehModel == GetHashKey("seashark2") or vehModel == GetHashKey("seashark3") then -- Speedophiles
 								if blipSprite ~= 471 then
 									SetBlipSprite(blip, 471)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `cargobob` or vehModel == `cargobob2` or vehModel == `cargobob3` or vehModel == `cargobob4` then -- Cargobobs
+							elseif vehModel == GetHashKey("cargobob") or vehModel == GetHashKey("cargobob2") or vehModel == GetHashKey("cargobob3") or vehModel == GetHashKey("cargobob4") then -- Cargobobs
 								if blipSprite ~= 481 then
 									SetBlipSprite(blip, 481)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `technical` or vehModel == `technical2` or vehModel == `technical3` then -- Technical
+							elseif vehModel == GetHashKey("technical") or vehModel == GetHashKey("technical2") or vehModel == GetHashKey("technical3") then -- Technical
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `taxi` then -- Cab/ Taxi
+							elseif vehModel == GetHashKey("taxi") then -- Cab/ Taxi
 								if blipSprite ~= 198 then
 									SetBlipSprite(blip, 198)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `fbi` or vehModel == `fbi2` or vehModel == `police2` or vehModel == `police3` -- Police Vehicles
-								or vehModel == `police` or vehModel == `sheriff2` or vehModel == `sheriff`
-								or vehModel == `policeold2` or vehModel == `policeold1` then
+							elseif vehModel == GetHashKey("fbi") or vehModel == GetHashKey("fbi2") or vehModel == GetHashKey("police2") or vehModel == GetHashKey("police3") -- Police Vehicles
+								or vehModel == GetHashKey("police") or vehModel == GetHashKey("sheriff2") or vehModel == GetHashKey("sheriff")
+								or vehModel == GetHashKey("policeold2") or vehModel == GetHashKey("policeold1") then
 								if blipSprite ~= 56 then
 									SetBlipSprite(blip, 56)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
@@ -1701,9 +1750,9 @@ Citizen.CreateThread(
 				local playerPedPos = GetEntityCoords(GetPlayerPed(-1), true)
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Vehicle Gun Enabled!~n~~w~Use The ~b~AP Pistol~n~~b~Aim ~w~and ~b~Shoot!")
-					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_APPISTOL`) then
+					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_APPISTOL")) then
 						if IsPedShooting(GetPlayerPed(-1)) then
 							while not HasModelLoaded(GetHashKey(VehicleGunVehicle)) do
 								Citizen.Wait(0)
@@ -1721,9 +1770,9 @@ Citizen.CreateThread(
 				local gotEntity = getEntity(PlayerId())
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Delete Gun Enabled!~n~~w~Use The ~b~Pistol~n~~b~Aim ~w~and ~b~Shoot ~w~To Delete!")
-					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_PISTOL`) then
+					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_PISTOL")) then
 						if IsPlayerFreeAiming(PlayerId()) then
 							if IsEntityAPed(gotEntity) then
 								if IsPedInAnyVehicle(gotEntity, true) then
@@ -2474,7 +2523,7 @@ Citizen.CreateThread(
 			elseif WarMenu.IsMenuOpened("WepMenu") then
 				if WarMenu.Button("~g~Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]` 1000, false, false)
+						GiveWeaponToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 1000, false, false)
 					end
 				elseif WarMenu.Button("~r~Remove All Weapons") then
 					for i = 1, #allWeapons do
@@ -2484,7 +2533,7 @@ Citizen.CreateThread(
 					for ids = 0, 256 do
 						if ids ~= PlayerId() and GetPlayerServerId(ids) ~= 0 then
 							for i = 1, #allWeapons do
-								GiveWeaponToPed(PlayerPedId(ids), `allWeapons[i]`, 1000, false, false)
+								GiveWeaponToPed(PlayerPedId(ids), GetHashKey(allWeapons[i]), 1000, false, false)
 					end
 				end
 			end
@@ -2498,7 +2547,7 @@ Citizen.CreateThread(
 		end
 				elseif WarMenu.Button("Give Ammo") then
 					for i = 1, #allWeapons do
-						AddAmmoToPed(PlayerPedId(), `allWeapons[i]`, 200)
+						AddAmmoToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 200)
 					end
 				elseif WarMenu.MenuButton("Give Single Weapon", "SingleWepMenu") then
 				elseif
@@ -2543,12 +2592,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
+				-- [NOTE] Local Weapon Menu
 			elseif WarMenu.IsMenuOpened("SingleWepMenu") then
-<<<<<<< Updated upstream
-				for i = 1, #allWeapons do
-					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]`), 1000, false, false)
-=======
 				WarMenu.MenuButton("Melee Weapons", "MeleeWepMenu")
 
 				WarMenu.Display()
@@ -2568,7 +2613,6 @@ Citizen.CreateThread(
 						if WarMenu.Button(v[1], "isWeapon") then
 							GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
 						end
->>>>>>> Stashed changes
 					end
 				end
 
@@ -3805,7 +3849,7 @@ Citizen.CreateThread(
 					AddExplosion(GetEntityCoords(GetPlayerPed(SelectedPlayer)), 2, 100000.0, true, false, 100000.0)
 				elseif WarMenu.Button("Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 250, false, false)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 250, false, false)
 					end
 				elseif WarMenu.Button("Remove All Weapons") then
 					RemoveAllPedWeapons(GetPlayerPed(SelectedPlayer), true)
@@ -3835,7 +3879,7 @@ Citizen.CreateThread(
 				WarMenu.SetSubTitle("SingleWepPlayer", "Give Weapon [" .. GetPlayerName(SelectedPlayer) .. "]")
 				for i = 1, #allWeapons do
 					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 1000, false, true)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 1000, false, true)
 					end
 				end
 
@@ -3935,23 +3979,7 @@ Citizen.CreateThread(
 				end
 				WarMenu.Display()
 			elseif IsDisabledControlPressed(0, 121) then
-				local name = GetPlayerName(PlayerId())
-				_buyer = "LUX"
-				if _gatekeeper then
-					if name == _buyer then
-						WarMenu.OpenMenu("LuxMainMenu")
-					else
-						drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
-					end
-				else
-					local input = KeyboardInput("Enter the keycode", "", 10)
-					if input == _secretKey then
-						_gatekeeper = true
-						drawNotification("~g~SUCCESS: ~w~Keycode validated.")
-					else
-						drawNotification("~r~ERROR: ~w~Invalid keycode")
-					end
-				end
+				GateKeep()
 			end
 
 			Citizen.Wait(0)
@@ -3959,9 +3987,6 @@ Citizen.CreateThread(
 	end
 )
 
-<<<<<<< Updated upstream
-RegisterCommand("killmenu", function(source,args,raw)
-=======
 function GateKeep()
 	local name = GetPlayerName(PlayerId())
 	_buyer = "leuit"
@@ -3990,6 +4015,5 @@ function GateKeep()
 end
 
 RegisterCommand("end", function(source,args,raw)
->>>>>>> Stashed changes
 	Enabled = false
 end, false)
