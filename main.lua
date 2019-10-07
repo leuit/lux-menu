@@ -29,12 +29,20 @@ local t_Weapons = {
 	WEAPON_BAT = {"Bat", "w_me_bat", "mpweaponsunusedfornow"},
 	WEAPON_GOLFCLUB = {"Golf Club", "w_me_gclub", "mpweaponsunusedfornow"},
 	WEAPON_CROWBAR = {"Crowbar", "w_me_crowbar", "mpweaponsunusedfornow"},
-	WEAPON_BOTTLE,
-	WEAPON_DAGGER,
-	WEAPON_HATCHET,
-	WEAPON_MACHETE,
-	WEAPON_FLASHLIGHT,
-	WEAPON_SWITCHBLADE,
+	WEAPON_BATTLEAXE = {"Battleaxe", "w_me_fireaxe", "mpweaponsunusedfornow"},
+	WEAPON_WRENCH = {"Wrench", "w_me_wrench", "mpweaponsunusedfornow"},
+	WEAPON_BATTLEAXE = {"Battleaxe", "w_me_fireaxe", "mpweaponsunusedfornow"},
+	-- Pistols
+	WEAPON_COMBATPISTOL = {"Combat Pistol", "w_pi_combatpistol", "mpweaponscommon_small"},
+	WEAPON_PISTOL_MK2 = {"Pistol Mk2", "w_pi_pistol", "mpweaponsgang1_small"},
+	WEAPON_PISTOL = {"Pistol", "w_pi_pistol", "mpweaponsgang1_small"},
+	WEAPON_APPISTOL = {"AP Pistol", "w_pi_apppistol", "mpweaponsgang1_small"},
+	WEAPON_STUNGUN = {"Stungun", "w_pi_stungun", "mpweaponsgang0_small"},
+	-- Automatic Rifles
+	WEAPON_CARBINERIFLE = {"Carbine Rifle", "w_ar_carbinerifle", "mpweaponsgang0_small"},
+	-- Shotguns
+	WEAPON_PUMPSHOTGUN = {"Pump shotgun", "w_ar_carbinerifle", "mpweaponsgang0_small"},
+	WEAPON_PUMPSHOTGUN = {"Sawed off", "w_sg_sawnoff", "mpweaponsgang0_small"},
 }
 
 local _weaponSprite = ""
