@@ -1,23 +1,24 @@
 -- Globals
-
 -- Menu color customization
 local _menuColor
 
 -- License key validation for LUX
 local _buyer
 local _secretKey = "devbuild"
-<<<<<<< Updated upstream
 local _gatekeeper = false
-=======
-local _gatekeeper = true
 local _auth = false
+
+-- Classes
+-- > Gatekeeper
+Gatekeeper = {}
+-- > Tools
+Tools = {}
 
 -- Fullscreen Notification builder
 local _notifTitle = "~p~LUX MENU"
 local _notifMsg = "We must authenticate your license before you proceed"
 local _notifMsg2 = "~g~Please enter your unique key code"
 local _errorCode = 0
->>>>>>> Stashed changes
 
 -- Global BOOL if the player is in a vehicle
 local _pVehicle = false
@@ -25,8 +26,6 @@ local _pVehicle = false
 -- Init variables
 local showMinimap = true
 
-<<<<<<< Updated upstream
-=======
 -- [NOTE] Weapon Table
 local t_Weapons = {
 	-- Melee
@@ -36,16 +35,23 @@ local t_Weapons = {
 	WEAPON_BAT = {"Bat", "w_me_bat", "mpweaponsunusedfornow", "melee"},
 	WEAPON_GOLFCLUB = {"Golf Club", "w_me_gclub", "mpweaponsunusedfornow", "melee"},
 	WEAPON_CROWBAR = {"Crowbar", "w_me_crowbar", "mpweaponsunusedfornow", "melee"},
-	WEAPON_BOTTLE,
-	WEAPON_DAGGER,
-	WEAPON_HATCHET,
-	WEAPON_MACHETE,
-	WEAPON_FLASHLIGHT,
-	WEAPON_SWITCHBLADE,
+	WEAPON_BATTLEAXE = {"Battleaxe", "w_me_fireaxe", "mpweaponsunusedfornow", "melee"},
+	WEAPON_WRENCH = {"Wrench", "w_me_wrench", "mpweaponsunusedfornow", "melee"},
+	WEAPON_BATTLEAXE = {"Battleaxe", "w_me_fireaxe", "mpweaponsunusedfornow", "melee"},
+	-- Pistols
+	WEAPON_COMBATPISTOL = {"Combat Pistol", "w_pi_combatpistol", "mpweaponscommon_small", "sidearm"},
+	WEAPON_PISTOL_MK2 = {"Pistol Mk2", "w_pi_pistol", "mpweaponsgang1_small", "sidearm"},
+	WEAPON_PISTOL = {"Pistol", "w_pi_pistol", "mpweaponsgang1_small", "sidearm"},
+	WEAPON_APPISTOL = {"AP Pistol", "w_pi_apppistol", "mpweaponsgang1_small", "sidearm"},
+	WEAPON_STUNGUN = {"Stungun", "w_pi_stungun", "mpweaponsgang0_small", "sidearm"},
+	-- Automatic Rifles
+	WEAPON_CARBINERIFLE = {"Carbine Rifle", "w_ar_carbinerifle", "mpweaponsgang0_small", "autorifle"},
+	-- Shotguns
+	WEAPON_PUMPSHOTGUN = {"Pump shotgun", "w_ar_carbinerifle", "mpweaponsgang0_small", "shotgun"},
+	WEAPON_PUMPSHOTGUN = {"Sawed off", "w_sg_sawnoff", "mpweaponsgang0_small", "shotgun"},
 }
 
 local _weaponSprite = ""
->>>>>>> Stashed changes
 local colorRed = { r = 231, g = 76, b = 60, a = 255 } -- rgb(231, 76, 60)
 local colorGreen = { r = 46, g = 204, b = 113, a = 255 } -- rgb(46, 204, 113)
 local colorBlue = { r = 52, g = 152, b = 219, a = 255 } -- rgb(52, 152, 219)
@@ -53,10 +59,6 @@ local colorPurple = { r = 155, g = 89, b = 182, a = 255 } -- rgb(155, 89, 182)
 -- Set a default menu theme
 _menuColor = colorPurple
 
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 local function KillYourself()
 	Citizen.CreateThread(function()
 		local playerPed = GetPlayerPed(-1)
@@ -64,12 +66,12 @@ local function KillYourself()
 		local canSuicide = false
 		local foundWeapon = nil
 
-		GiveWeaponToPed(playerPed, `WEAPON_PISTOL`, 250, false, true)
+		GiveWeaponToPed(playerPed, GetHashKey("WEAPON_PISTOL"), 250, false, true)
 
-		if HasPedGotWeapon(playerPed, `WEAPON_PISTOL`) then
-			if GetAmmoInPedWeapon(playerPed, `WEAPON_PISTOL`) > 0 then
+		if HasPedGotWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) then
+			if GetAmmoInPedWeapon(playerPed, GetHashKey('WEAPON_PISTOL')) > 0 then
 				canSuicide = true
-				foundWeapon = `WEAPON_PISTOL`
+				foundWeapon = GetHashKey('WEAPON_PISTOL')
 			end
 		end
 
@@ -314,7 +316,7 @@ local paintsMetal = {
 	{name = "Brushed Gold", id = 159},
 }
 
-defaultVehAction = ""
+local defaultVehAction = ""
 
 function checkValidVehicleExtras()
 	local playerPed = PlayerPedId()
@@ -419,17 +421,6 @@ WarMenu = {}
 
 WarMenu.debug = false
 
-local function RGBRainbow(frequency)
-	local result = {}
-	local curtime = GetGameTimer() / 1000
-
-	result.r = math.floor(math.sin(curtime * frequency + 0) * 127 + 128)
-	result.g = math.floor(math.sin(curtime * frequency + 2) * 127 + 128)
-	result.b = math.floor(math.sin(curtime * frequency + 4) * 127 + 128)
-
-	return result
-end
-
 local menus = {}
 local keys = {up = 172, down = 173, left = 174, right = 175, select = 176, back = 177}
 local optionCount = 0
@@ -513,7 +504,10 @@ local function drawRect(x, y, width, height, color)
 	DrawRect(x, y, width, height, color.r, color.g, color.b, color.a)
 end
 
+-- [NOTE] MenuDrawTitle
 local function drawTitle()
+	SetScriptGfxDrawOrder(1)
+
 	if menus[currentMenu] then
 		local x = menus[currentMenu].x + menuWidth / 2
 		local y = menus[currentMenu].y + titleHeight / 2
@@ -524,6 +518,19 @@ local function drawTitle()
 			else
 				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
 			end
+		elseif menus[currentMenu].background == "weaponlist" then
+			RequestStreamedTextureDict("commonmenu")
+			if _menuColor == colorPurple then
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, 255, 76, 60, 255) -- 255, 76, 60,
+			else
+				DrawSprite("commonmenu", "interaction_bgd", x, y + 0.025, menuWidth, (titleHeight * -1) - 0.025, 0.0, _menuColor.r, _menuColor.g, _menuColor.b, 255)
+			end
+
+			RequestStreamedTextureDict("mpweaponscommon")
+			RequestStreamedTextureDict("mpweaponsgang0")
+			RequestStreamedTextureDict("mpweaponsgang1")
+			RequestStreamedTextureDict("mpweaponsunusedfornow")
+			 -- rgb(155, 89, 182)
 		elseif menus[currentMenu].titleBackgroundSprite then
 			DrawSprite(
 				menus[currentMenu].titleBackgroundSprite.dict,
@@ -624,6 +631,7 @@ local function drawFooter()
 	end
 end
 
+-- [NOTE] MenuDrawButton
 local function drawButton(text, subText)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
@@ -642,7 +650,7 @@ local function drawButton(text, subText)
 	end
 
 	if multiplier then
-		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2 + 0.0020 -- 0.0025 is the offset for the line under subTitle
 		local backgroundColor = nil
 		local textColor = nil
 		local subTextColor = nil
@@ -706,24 +714,29 @@ local function drawButton(text, subText)
 			DrawSprite("mpleaderboard", "leaderboard_kd_icon", x - menuWidth / 2.20, y, 0.02, buttonHeight - 0.010, 0.0, 231, 76, 60, 255) -- rgb(231, 76, 60)
 		elseif text == "Server Options" then
 			RequestStreamedTextureDict("mpleaderboard")
-<<<<<<< Updated upstream
-			DrawSprite("mpleaderboard", "leaderboard_globe_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 155, 89, 182, 255) -- rgb(155, 89, 182)
-	--	elseif text == "~b~Menu Settings" then
-	--		RequestStreamedTextureDict("mpleaderboard")
-	--		DrawSprite("mpleaderboard", "leaderboard_time_icon", x - menuWidth / 2.15, y, 0.02, buttonHeight - 0.010, 0.0, 255, 255, 255, 255) -- rgb(155, 89, 182)
-=======
 			DrawSprite("mpleaderboard", "leaderboard_globe_icon", x - menuWidth / 2.20, y, 0.02, buttonHeight - 0.010, 0.0, 155, 89, 182, 255) -- rgb(155, 89, 182)
-		elseif menus[currentMenu].subTitle == "MELEE WEAPONS" then
+		--elseif menus[currentMenu].subTitle == "MELEE WEAPONS" then
 			-- loop through weapon names
-			menus[currentMenu].title = ""
-			menus[currentMenu].background = "weaponlist"
->>>>>>> Stashed changes
+	--		menus[currentMenu].title = ""
+	--		menus[currentMenu].background = "weaponlist"
 		end
 
 
 		if subText == "isMenu" then
 			RequestStreamedTextureDict("commonmenu")
 			DrawSprite("commonmenu", "arrowright", x + menuWidth / 2.3, y, 0.02, buttonHeight, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+		elseif subText == "isWeapon" then
+			menus[currentMenu].title = ""
+			menus[currentMenu].background = "weaponlist"
+			local x = menus[currentMenu].x + menuWidth / 2
+			local y = menus[currentMenu].y + titleHeight / 2 + titleYOffset - 0.02
+			for hash, v in pairs(t_Weapons) do
+				if text == v[1] then
+					SetScriptGfxDrawOrder(50)
+					RequestStreamedTextureDict(v[3])
+					DrawSprite(v[3], v[2], x, y, 0.10, 0.10, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+				end
+			end
 
 		elseif subText then
 			drawText(
@@ -888,7 +901,7 @@ function WarMenu.Button(text, subText)
 		buttonText = "{ " .. tostring(buttonText) .. ", " .. tostring(subText) .. " }"
 	end
 
-	if menus[currentMenu] then
+	if menus[currentMenu]  then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
@@ -986,7 +999,6 @@ function WarMenu.Display()
 			WarMenu.CloseMenu()
 		else
 			ClearAllHelpMessages()
-
 			drawTitle()
 			drawSubTitle()
 			drawFooter()
@@ -1098,6 +1110,9 @@ function KeyboardInput(TextEntry, ExampleText, MaxStringLength)
 
 	while UpdateOnscreenKeyboard() ~= finished and UpdateOnscreenKeyboard() ~= cancelled do
 		Citizen.Wait(0)
+		if UpdateOnscreenKeyboard() ~= cancelled then
+			print(GetOnscreenKeyboardResult())
+		end
 	end
 
 	if UpdateOnscreenKeyboard() ~= cancelled then
@@ -1161,80 +1176,6 @@ function drawNotification(text)
 	DrawNotification(false, false)
 end
 
-local allWeapons = {
-	"WEAPON_KNIFE",
-	"WEAPON_KNUCKLE",
-	"WEAPON_NIGHTSTICK",
-	"WEAPON_HAMMER",
-	"WEAPON_BAT",
-	"WEAPON_GOLFCLUB",
-	"WEAPON_CROWBAR",
-	"WEAPON_BOTTLE",
-	"WEAPON_DAGGER",
-	"WEAPON_HATCHET",
-	"WEAPON_MACHETE",
-	"WEAPON_FLASHLIGHT",
-	"WEAPON_SWITCHBLADE",
-	"WEAPON_PISTOL",
-	"WEAPON_PISTOL_MK2",
-	"WEAPON_COMBATPISTOL",
-	"WEAPON_APPISTOL",
-	"WEAPON_PISTOL50",
-	"WEAPON_SNSPISTOL",
-	"WEAPON_HEAVYPISTOL",
-	"WEAPON_VINTAGEPISTOL",
-	"WEAPON_STUNGUN",
-	"WEAPON_FLAREGUN",
-	"WEAPON_MARKSMANPISTOL",
-	"WEAPON_REVOLVER",
-	"WEAPON_MICROSMG",
-	"WEAPON_SMG",
-	"WEAPON_SMG_MK2",
-	"WEAPON_ASSAULTSMG",
-	"WEAPON_MG",
-	"WEAPON_COMBATMG",
-	"WEAPON_COMBATMG_MK2",
-	"WEAPON_COMBATPDW",
-	"WEAPON_GUSENBERG",
-	"WEAPON_MACHINEPISTOL",
-	"WEAPON_ASSAULTRIFLE",
-	"WEAPON_ASSAULTRIFLE_MK2",
-	"WEAPON_CARBINERIFLE",
-	"WEAPON_CARBINERIFLE_MK2",
-	"WEAPON_ADVANCEDRIFLE",
-	"WEAPON_SPECIALCARBINE",
-	"WEAPON_BULLPUPRIFLE",
-	"WEAPON_COMPACTRIFLE",
-	"WEAPON_PUMPSHOTGUN",
-	"WEAPON_SAWNOFFSHOTGUN",
-	"WEAPON_BULLPUPSHOTGUN",
-	"WEAPON_ASSAULTSHOTGUN",
-	"WEAPON_MUSKET",
-	"WEAPON_HEAVYSHOTGUN",
-	"WEAPON_DBSHOTGUN",
-	"WEAPON_SNIPERRIFLE",
-	"WEAPON_HEAVYSNIPER",
-	"WEAPON_HEAVYSNIPER_MK2",
-	"WEAPON_MARKSMANRIFLE",
-	"WEAPON_GRENADELAUNCHER",
-	"WEAPON_GRENADELAUNCHER_SMOKE",
-	"WEAPON_RPG",
-	"WEAPON_STINGER",
-	"WEAPON_FIREWORK",
-	"WEAPON_HOMINGLAUNCHER",
-	"WEAPON_GRENADE",
-	"WEAPON_STICKYBOMB",
-	"WEAPON_PROXMINE",
-	"WEAPON_BZGAS",
-	"WEAPON_SMOKEGRENADE",
-	"WEAPON_MOLOTOV",
-	"WEAPON_FIREEXTINGUISHER",
-	"WEAPON_PETROLCAN",
-	"WEAPON_SNOWBALL",
-	"WEAPON_FLARE",
-	"WEAPON_BALL"
-}
-
 local Enabled = true
 
 local function TeleportToWaypoint()
@@ -1260,19 +1201,6 @@ local function TeleportToWaypoint()
 	else
 		drawNotification("Please place your waypoint.")
 	end
-end
-
-function stringsplit(inputstr, sep)
-	if sep == nil then
-		sep = "%s"
-	end
-	local t = {}
-	i = 1
-	for str in string.gmatch(inputstr, "([^" .. sep .. "]+)") do
-		t[i] = str
-		i = i + 1
-	end
-	return t
 end
 
 local Spectating = false
@@ -1305,44 +1233,44 @@ function ShootPlayer(player)
 end
 
 function MaxOut(veh)
-                    SetVehicleModKit(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0)
-                    SetVehicleWheelType(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 2, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 2) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 3, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 3) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 4, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 4) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 6, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 6) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 8, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 8) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 9, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 9) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 10, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 10) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 11, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 11) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 12, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 12) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 13, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 13) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 14, 16, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 15, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 15) - 2, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 16, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 16) - 1, false)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 17, true)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 18, true)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 19, true)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 20, true)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 21, true)
-                    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 22, true)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 23, 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 24, 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 25, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 25) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 27, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 27) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 28, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 28) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 30, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 30) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 33, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 33) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 34, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 34) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 35, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 35) - 1, false)
-                    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 38, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 38) - 1, true)
-                    SetVehicleWindowTint(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1)
-                    SetVehicleTyresCanBurst(GetVehiclePedIsIn(GetPlayerPed(-1), false), false)
-                    SetVehicleNumberPlateTextIndex(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5)
+	SetVehicleModKit(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0)
+    SetVehicleWheelType(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7)
+	SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 0) - 1, false)
+	SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 2, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 2) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 3, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 3) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 4, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 4) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 6, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 6) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 7) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 8, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 8) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 9, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 9) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 10, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 10) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 11, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 11) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 12, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 12) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 13, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 13) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 14, 16, false)
+	SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 15, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 15) - 2, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 16, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 16) - 1, false)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 17, true)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 18, true)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 19, true)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 20, true)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 21, true)
+    ToggleVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 22, true)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 23, 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 24, 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 25, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 25) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 27, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 27) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 28, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 28) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 30, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 30) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 33, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 33) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 34, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 34) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 35, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 35) - 1, false)
+    SetVehicleMod(GetVehiclePedIsIn(GetPlayerPed(-1), false), 38, GetNumVehicleMods(GetVehiclePedIsIn(GetPlayerPed(-1), false), 38) - 1, true)
+    SetVehicleWindowTint(GetVehiclePedIsIn(GetPlayerPed(-1), false), 1)
+    SetVehicleTyresCanBurst(GetVehiclePedIsIn(GetPlayerPed(-1), false), false)
+    SetVehicleNumberPlateTextIndex(GetVehiclePedIsIn(GetPlayerPed(-1), false), 5)
 end
 
 function DelVeh(veh)
@@ -1437,6 +1365,48 @@ function DrawSpecialText(m_text, showtime)
 end
 
 -- MAIN CODE --
+function displayHelp(text)
+end
+
+-- Scaleform Drawing Thread
+
+-- Add an event handler for when the screen is dismissed.
+AddEventHandler("optionSelected", function(selected)
+    print(selected) -- do whatever you want with the selected choice.
+    -- players can either press the physicial buttons, or they can click
+    -- the instructional buttons with their mouse and it will trigger
+	-- the event as well.
+	GateKeep()
+end)
+
+-- Create a thread to loop this warning message.
+-- [NOTE] POPUP AUTH WARNING
+Citizen.CreateThread(function()
+	while true do
+		Citizen.Wait(0)
+		AddTextEntry("FACES_WARNH2", _notifTitle)
+		AddTextEntry("QM_NO_0", _notifMsg)
+		AddTextEntry("QM_NO_3", _notifMsg2)
+
+		while not _gatekeeper and not _auth do
+			Citizen.Wait(0)
+			-- Display the warning message every tick.
+			DrawFrontendAlert("FACES_WARNH2", "QM_NO_0", 2, 0, "QM_NO_3", 2, -1, false, "FM_NXT_RAC", "QM_NO_1", true, _errorCode)
+			-- Check for key presses or instructional button clicks.
+			-- Input group of 2 is required for this to work while the warning is being displayed.
+			
+			if (IsControlJustReleased(2, 201) or IsControlJustReleased(2, 217)) then -- any select/confirm key was pressed.
+				TriggerEvent("optionSelected", "select")
+				break
+			elseif (IsControlJustReleased(2, 203)) then -- spacebar/x on controller (alt option) was pressed.
+				TriggerEvent("optionSelected", "alt")
+				break
+			end
+			--drawscaleform("POPUP_WARNING")
+		end
+	end
+end)
+
 
 -- Player Blips thread
 Citizen.CreateThread(function()
@@ -1502,7 +1472,7 @@ Citizen.CreateThread(function()
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
 							elseif vehClass == 16 then -- Plane
-								if vehModel == `besra` or vehModel == `hydra` or vehModel == `lazer` then -- Jets
+								if vehModel == GetHashKey("besra") or vehModel == GetHashKey("hydra") or vehModel == GetHashKey("lazer") then -- Jets
 									if blipSprite ~= 424 then
 										SetBlipSprite(blip, 424)
 										Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
@@ -1516,54 +1486,54 @@ Citizen.CreateThread(function()
 									SetBlipSprite(blip, 427)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `insurgent` or vehModel == `insurgent2` or vehModel == `insurgent3` then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
+							elseif vehModel == GetHashKey("insurgent") or vehModel == GetHashKey("insurgent2") or vehModel == GetHashKey("insurgent3") then -- Insurgent, Insurgent Pickup & Insurgent Pickup Custom
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `limo2` then -- Turreted Limo
+							elseif vehModel == GetHashKey("limo2") then -- Turreted Limo
 								if blipSprite ~= 460 then
 									SetBlipSprite(blip, 460)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `rhino` then -- Tank
+							elseif vehModel == GetHashKey("rhino") then -- Tank
 								if blipSprite ~= 421 then
 									SetBlipSprite(blip, 421)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `trash` or vehModel == `trash2` then -- Trash
+							elseif vehModel == GetHashKey("trash") or vehModel == GetHashKey("trash2") then -- Trash
 								if blipSprite ~= 318 then
 									SetBlipSprite(blip, 318)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `pbus` then -- Prison Bus
+							elseif vehModel == GetHashKey("pbus") then -- Prison Bus
 								if blipSprite ~= 513 then
 									SetBlipSprite(blip, 513)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `seashark` or vehModel == `seashark2` or vehModel == `seashark3` then -- Speedophiles
+							elseif vehModel == GetHashKey("seashark") or vehModel == GetHashKey("seashark2") or vehModel == GetHashKey("seashark3") then -- Speedophiles
 								if blipSprite ~= 471 then
 									SetBlipSprite(blip, 471)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `cargobob` or vehModel == `cargobob2` or vehModel == `cargobob3` or vehModel == `cargobob4` then -- Cargobobs
+							elseif vehModel == GetHashKey("cargobob") or vehModel == GetHashKey("cargobob2") or vehModel == GetHashKey("cargobob3") or vehModel == GetHashKey("cargobob4") then -- Cargobobs
 								if blipSprite ~= 481 then
 									SetBlipSprite(blip, 481)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `technical` or vehModel == `technical2` or vehModel == `technical3` then -- Technical
+							elseif vehModel == GetHashKey("technical") or vehModel == GetHashKey("technical2") or vehModel == GetHashKey("technical3") then -- Technical
 								if blipSprite ~= 426 then
 									SetBlipSprite(blip, 426)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `taxi` then -- Cab/ Taxi
+							elseif vehModel == GetHashKey("taxi") then -- Cab/ Taxi
 								if blipSprite ~= 198 then
 									SetBlipSprite(blip, 198)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, false) -- Player Blip indicator
 								end
-							elseif vehModel == `fbi` or vehModel == `fbi2` or vehModel == `police2` or vehModel == `police3` -- Police Vehicles
-								or vehModel == `police` or vehModel == `sheriff2` or vehModel == `sheriff`
-								or vehModel == `policeold2` or vehModel == `policeold1` then
+							elseif vehModel == GetHashKey("fbi") or vehModel == GetHashKey("fbi2") or vehModel == GetHashKey("police2") or vehModel == GetHashKey("police3") -- Police Vehicles
+								or vehModel == GetHashKey("police") or vehModel == GetHashKey("sheriff2") or vehModel == GetHashKey("sheriff")
+								or vehModel == GetHashKey("policeold2") or vehModel == GetHashKey("policeold1") then
 								if blipSprite ~= 56 then
 									SetBlipSprite(blip, 56)
 									Citizen.InvokeNative( 0x5FBCA48327B914DF, blip, true) -- Player Blip indicator
@@ -1701,9 +1671,9 @@ Citizen.CreateThread(
 				local playerPedPos = GetEntityCoords(GetPlayerPed(-1), true)
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Vehicle Gun Enabled!~n~~w~Use The ~b~AP Pistol~n~~b~Aim ~w~and ~b~Shoot!")
-					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), `WEAPON_APPISTOL`, 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_APPISTOL`) then
+					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_APPISTOL"), 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_APPISTOL")) then
 						if IsPedShooting(GetPlayerPed(-1)) then
 							while not HasModelLoaded(GetHashKey(VehicleGunVehicle)) do
 								Citizen.Wait(0)
@@ -1721,9 +1691,9 @@ Citizen.CreateThread(
 				local gotEntity = getEntity(PlayerId())
 				if (IsPedInAnyVehicle(GetPlayerPed(-1), true) == false) then
 					drawNotification("~g~Delete Gun Enabled!~n~~w~Use The ~b~Pistol~n~~b~Aim ~w~and ~b~Shoot ~w~To Delete!")
-					GiveWeaponToPed(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999, false, true)
-					SetPedAmmo(GetPlayerPed(-1), `WEAPON_PISTOL`, 999999)
-					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == `WEAPON_PISTOL`) then
+					GiveWeaponToPed(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999, false, true)
+					SetPedAmmo(GetPlayerPed(-1), GetHashKey("WEAPON_PISTOL"), 999999)
+					if (GetSelectedPedWeapon(GetPlayerPed(-1)) == GetHashKey("WEAPON_PISTOL")) then
 						if IsPlayerFreeAiming(PlayerId()) then
 							if IsEntityAPed(gotEntity) then
 								if IsPedInAnyVehicle(gotEntity, true) then
@@ -2237,16 +2207,14 @@ Citizen.CreateThread(
 function GetPlayers()
 	local players = {}
 
-	for i = 0, 31 do
-		if NetworkIsPlayerActive(i) then
-			table.insert(players, i)
-		end
+	for _, player in ipairs(GetActivePlayers()) do
+		table.insert(players, player)
 	end
 
 	return players
 end
 
--- Menu Thread
+-- [NOTE]
 Citizen.CreateThread(
 	function()
 		FreezeEntityPosition(entity, false)
@@ -2273,7 +2241,9 @@ Citizen.CreateThread(
 		WarMenu.CreateSubMenu("WepMenu", "LuxMainMenu", "Weapon Options")
 		WarMenu.CreateSubMenu("SingleWepMenu", "WepMenu", "Give Single Weapon")
 		WarMenu.CreateSubMenu("MeleeWepMenu", "SingleWepMenu", "Melee Weapons")
-		WarMenu.CreateSubMenu("HandgunWepMenu", "SingleWepMenu", "Hand Guns")
+		WarMenu.CreateSubMenu("SidearmWepMenu", "SingleWepMenu", "Sidearms")
+		WarMenu.CreateSubMenu("AutorifleWepMenu", "SingleWepMenu", "Automatic Rifles")
+		WarMenu.CreateSubMenu("ShotgunWepMenu", "SingleWepMenu", "Shotguns")
 		WarMenu.CreateSubMenu("ESXBoss", "ServerMenu", "ESX Boss Menus")
 		WarMenu.CreateSubMenu("ESXMoney", "ServerMenu", "ESX Money Options")
 		WarMenu.CreateSubMenu("ESXMisc", "ServerMenu", "ESX Misc Options")
@@ -2474,7 +2444,7 @@ Citizen.CreateThread(
 			elseif WarMenu.IsMenuOpened("WepMenu") then
 				if WarMenu.Button("~g~Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]` 1000, false, false)
+						GiveWeaponToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 1000, false, false)
 					end
 				elseif WarMenu.Button("~r~Remove All Weapons") then
 					for i = 1, #allWeapons do
@@ -2484,7 +2454,7 @@ Citizen.CreateThread(
 					for ids = 0, 256 do
 						if ids ~= PlayerId() and GetPlayerServerId(ids) ~= 0 then
 							for i = 1, #allWeapons do
-								GiveWeaponToPed(PlayerPedId(ids), `allWeapons[i]`, 1000, false, false)
+								GiveWeaponToPed(PlayerPedId(ids), GetHashKey(allWeapons[i]), 1000, false, false)
 					end
 				end
 			end
@@ -2498,7 +2468,7 @@ Citizen.CreateThread(
 		end
 				elseif WarMenu.Button("Give Ammo") then
 					for i = 1, #allWeapons do
-						AddAmmoToPed(PlayerPedId(), `allWeapons[i]`, 200)
+						AddAmmoToPed(PlayerPedId(), GetHashKey(allWeapons[i]), 200)
 					end
 				elseif WarMenu.MenuButton("Give Single Weapon", "SingleWepMenu") then
 				elseif
@@ -2543,13 +2513,12 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
+				-- [NOTE] Local Weapon Menu
 			elseif WarMenu.IsMenuOpened("SingleWepMenu") then
-<<<<<<< Updated upstream
-				for i = 1, #allWeapons do
-					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(PlayerPedId(), `allWeapons[i]`), 1000, false, false)
-=======
 				WarMenu.MenuButton("Melee Weapons", "MeleeWepMenu")
+				WarMenu.MenuButton("Sidearms", "SidearmWepMenu")
+				WarMenu.MenuButton("Auto Rifles", "AutorifleWepMenu")
+				WarMenu.MenuButton("Shotguns", "ShotgunWepMenu")
 
 				WarMenu.Display()
 			elseif WarMenu.IsMenuOpened("MeleeWepMenu") then
@@ -2562,21 +2531,40 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("HandgunWepMenu") then
+			elseif WarMenu.IsMenuOpened("SidearmWepMenu") then
 				for hash, v in pairs(t_Weapons) do
-					if v[4] == "handgun" then
+					if v[4] == "sidearm" then
 						if WarMenu.Button(v[1], "isWeapon") then
 							GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
 						end
->>>>>>> Stashed changes
 					end
 				end
 
 				WarMenu.Display()
+			elseif WarMenu.IsMenuOpened("AutorifleWepMenu") then
+				for hash, v in pairs(t_Weapons) do
+					if v[4] == "autorifle" then
+						if WarMenu.Button(v[1], "isWeapon") then
+							GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
+						end
+					end
+				end
+
+				WarMenu.Display()
+			elseif WarMenu.IsMenuOpened("ShotgunWepMenu") then
+				for hash, v in pairs(t_Weapons) do
+					if v[4] == "shotgun" then
+						if WarMenu.Button(v[1], "isWeapon") then
+							GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
+						end
+					end
+				end
+
+				WarMenu.Display()	
 			elseif WarMenu.IsMenuOpened("VehMenu") then
 
 				if WarMenu.Button("~g~Spawn Vehicle") then
-					local ModelName = KeyboardInput("Enter Vehicle Spawn Name", "", 20)
+					local ModelName = KeyboardInput("Enter Vehicle Spawn Name", "blista", 20)
 					if ModelName and IsModelValid(ModelName) and IsModelAVehicle(ModelName) then
 						RequestModel(ModelName)
 						while not HasModelLoaded(ModelName) do
@@ -2639,7 +2627,7 @@ Citizen.CreateThread(
 				elseif WarMenu.Button("Change License Plate") then
 					local playerPed = GetPlayerPed(-1)
 					local playerVeh = GetVehiclePedIsIn(playerPed, true)
-					local result = KeyboardInput("Enter new plate text", "", 10)
+					local result = KeyboardInput("Enter new plate text", "ISJ 823", 10)
 					if result then
 						SetVehicleNumberPlateText(playerVeh, result)
 					end
@@ -3290,10 +3278,10 @@ Citizen.CreateThread(
 								if not IsVehicleExtraTurnedOn(veh, i) then
 									local payed = true
 									if payed then
-										SetVehicleExtra(veh, i, not IsVehicleExtraTurnedOn(veh,i))
+										SetVehicleExtra(veh, i, IsVehicleExtraTurnedOn(veh,i))
 									end
 								else
-									SetVehicleExtra(veh, i, not IsVehicleExtraTurnedOn(veh,i))
+									SetVehicleExtra(veh, i, IsVehicleExtraTurnedOn(veh,i))
 								end
 							end
 						end
@@ -3805,7 +3793,7 @@ Citizen.CreateThread(
 					AddExplosion(GetEntityCoords(GetPlayerPed(SelectedPlayer)), 2, 100000.0, true, false, 100000.0)
 				elseif WarMenu.Button("Give All Weapons") then
 					for i = 1, #allWeapons do
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 250, false, false)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 250, false, false)
 					end
 				elseif WarMenu.Button("Remove All Weapons") then
 					RemoveAllPedWeapons(GetPlayerPed(SelectedPlayer), true)
@@ -3835,7 +3823,7 @@ Citizen.CreateThread(
 				WarMenu.SetSubTitle("SingleWepPlayer", "Give Weapon [" .. GetPlayerName(SelectedPlayer) .. "]")
 				for i = 1, #allWeapons do
 					if WarMenu.Button(allWeapons[i]) then
-						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), `allWeapons[i]`, 1000, false, true)
+						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(allWeapons[i]), 1000, false, true)
 					end
 				end
 
@@ -3868,11 +3856,12 @@ Citizen.CreateThread(
 							Citizen.Wait(0)
 						end
 
-						local veh = ESX.Game.SpawnVehicle(GetHashKey(ModelName), GetEntityCoords(ped), GetEntityHeading(ped), true, true)
+						local veh = CreateVehicle(GetHashKey(ModelName), GetEntityCoords(ped), GetEntityHeading(ped), true, true)
 						SetVehicleNumberPlateText(veh, newPlate)
 						local vehicleProps = ESX.Game.GetVehicleProperties(veh)
 						TriggerServerEvent('esx_vehicleshop:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
 						TriggerServerEvent('esx_givecarkeys:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
+						TriggerServerEvent('garage:addKeys', newPlate)
 						--drawNotification("Success")
 					else
 						drawNotification("~r~Model is not valid!")
@@ -3924,7 +3913,7 @@ Citizen.CreateThread(
 					SetVehicleLights(playerVeh, 1)
 					Citizen.InvokeNative(0x1FD09E7390A74D54, playerVeh, 1)
 					SetVehicleNumberPlateTextIndex(playerVeh, 5)
-					SetVehicleNumberPlateText(playerVeh, "NIGGER")
+					SetVehicleNumberPlateText(playerVeh, "Lux Menu")
 					SetVehicleDirtLevel(playerVeh, 10.0)
 					SetVehicleModColor_1(playerVeh, 1)
 					SetVehicleModColor_2(playerVeh, 1)
@@ -3935,23 +3924,7 @@ Citizen.CreateThread(
 				end
 				WarMenu.Display()
 			elseif IsDisabledControlPressed(0, 121) then
-				local name = GetPlayerName(PlayerId())
-				_buyer = "LUX"
-				if _gatekeeper then
-					if name == _buyer then
-						WarMenu.OpenMenu("LuxMainMenu")
-					else
-						drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
-					end
-				else
-					local input = KeyboardInput("Enter the keycode", "", 10)
-					if input == _secretKey then
-						_gatekeeper = true
-						drawNotification("~g~SUCCESS: ~w~Keycode validated.")
-					else
-						drawNotification("~r~ERROR: ~w~Invalid keycode")
-					end
-				end
+				GateKeep()
 			end
 
 			Citizen.Wait(0)
@@ -3959,9 +3932,6 @@ Citizen.CreateThread(
 	end
 )
 
-<<<<<<< Updated upstream
-RegisterCommand("killmenu", function(source,args,raw)
-=======
 function GateKeep()
 	local name = GetPlayerName(PlayerId())
 	_buyer = "leuit"
@@ -3989,7 +3959,8 @@ function GateKeep()
 	end
 end
 
-RegisterCommand("end", function(source,args,raw)
->>>>>>> Stashed changes
-	Enabled = false
-end, false)
+--SetResourceKvp("func:", 'nigga')
+--print(GetResourceKvpString("luxmenu"))
+
+print(_VERSION)
+print(_G)
