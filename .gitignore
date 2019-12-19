@@ -1,5 +1,10 @@
 # FiveM Lua Resource
 __resource.lua
+/exec
+
+# Development Shortcuts
+*.lnk
+*.data
 
 # Compiled Lua sources
 luac.out
