@@ -1,3 +1,5 @@
+print("^1LOADING")
+
 LUX = {}
 
 LUX.Math = {}
@@ -148,6 +150,56 @@ local function KillYourself()
 		end
 	end)
 end
+
+local function VerifyResource(resourceName)
+	TriggerEvent(resourceName .. ".verify")
+end
+
+local function GetResources()
+    local resources = {}
+	for i = 1, GetNumResources() do
+		resources[i] = GetResourceByFindIndex(i)
+    end
+    return resources
+end
+
+local validResources = {}
+
+RegisterNetEvent("lux.verifyResource")
+local resourceListHandler = AddEventHandler("lux.verifyResource", function(resource)
+	validResources[#validResources + 1] = resource
+end)
+
+for i, v in ipairs(GetResources()) do
+	VerifyResource(v)
+end
+
+local validResourceEvents = {}
+local validResourceServerEvents = {}
+
+RegisterNetEvent("lux.fillEventList")
+AddEventHandler("lux.fillEventList", function(resourceName, eventTable)
+	validResourceEvents[resourceName] = eventTable
+end)
+
+RegisterNetEvent("lux.fillServerEventList")
+AddEventHandler("lux.fillServerEventList", function(resourceName, eventTable)
+	validResourceServerEvents[resourceName] = eventTable
+end)
+
+local function RefreshResourceData()
+	for i, v in ipairs(validResources) do 
+		TriggerEvent(v .. ".getEvents")
+		TriggerEvent(v .. ".getServerEvents")
+	end
+end
+
+Citizen.CreateThread(function() 
+
+	RefreshResourceData()
+	Citizen.Wait(10000)
+
+end)
 
 LUX.Keys = {
 	["ESC"] = 322, ["F1"] = 288, ["F2"] = 289, ["F3"] = 170, ["F5"] = 166, ["F6"] = 167, ["F7"] = 168, ["F8"] = 169, ["F9"] = 56, ["F10"] = 57,
@@ -2331,7 +2383,7 @@ Citizen.CreateThread(
 		while isMenuEnabled do
 			Citizen.Wait(0)
 			-- Radar/showMinimap
-			DisplayRadar(showMinimap)
+			DisplayRadar(showMinimap, 1)
 			LUX.Player.inVehicle = IsPedInAnyVehicle(GetPlayerPed(-1), 0)
 
 			SetPlayerInvincible(PlayerId(), Godmode)
@@ -2756,6 +2808,10 @@ Citizen.CreateThread(
 		WarMenu.CreateSubMenu("LocalAutorifleWeapons", "LocalWepCategory", "Automatic Rifles")
 		WarMenu.CreateSubMenu("LocalShotgunWeapons", "LocalWepCategory", "Shotguns")
 
+		WarMenu.CreateSubMenu("ServerResources", "ServerMenu", "Server Resources")
+		WarMenu.CreateSubMenu('ResourceData', "ServerResources", "Resource Data")
+		WarMenu.CreateSubMenu('ResourceCEvents', 'ResourceData', 'Event Handlers')
+		WarMenu.CreateSubMenu('ResourceSEvents', 'ResourceData', 'Server Events')
 		WarMenu.CreateSubMenu("ESXBoss", "ServerMenu", "ESX Boss Menus")
 		WarMenu.CreateSubMenu("ESXMoney", "ServerMenu", "ESX Money Options")
 		WarMenu.CreateSubMenu("ESXMisc", "ServerMenu", "ESX Misc Options")
@@ -2797,6 +2853,7 @@ Citizen.CreateThread(
 		end
 
 		local SelectedPlayer = nil
+		local SelectedResource = nil
 		
 		while isMenuEnabled do
 			ped = PlayerPedId()
@@ -3949,23 +4006,25 @@ Citizen.CreateThread(
 
 			if WarMenu.IsMenuOpened("ServerMenu") then
 
-				if WarMenu.MenuButton("~g~ESX ~s~BOSS Menus", "ESXBoss") then
-				elseif WarMenu.MenuButton("~g~ESX ~s~Money Options", "ESXMoney") then
-				elseif WarMenu.MenuButton("~g~ESX ~s~Misc Options", "ESXMisc") then
-				elseif WarMenu.MenuButton("~g~ESX ~s~Drugs", "ESXDrugs") then
-				elseif WarMenu.MenuButton("~b~VRP ~s~Server Options", "VRPOptions") then
-				elseif WarMenu.MenuButton("~o~Misc ~s~Options", "MiscServerOptions") then
-				end
+				if WarMenu.MenuButton("Resource List", "ServerResources") then end
+				if WarMenu.MenuButton("ESX Boss Options", "ESXBoss") then end
+				if WarMenu.MenuButton("ESX Money Options", "ESXMoney") then end
+				if WarMenu.MenuButton("ESX Misc Options", "ESXMisc") then end
+				if WarMenu.MenuButton("ESX Drug Options", "ESXDrugs") then end
+				if WarMenu.MenuButton("VRP Options", "VRPOptions") then end
+				if WarMenu.MenuButton("Misc Options", "MiscServerOptions") then end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("MenuSettings") then
+			end
+			if WarMenu.IsMenuOpened("MenuSettings") then
 
 				if WarMenu.MenuButton("Change Color Theme", "MenuSettingsColor") then
 				elseif WarMenu.Button("~r~Kill Menu") then
 					isMenuEnabled = false
 				end
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("MenuSettingsColor") then
+			end
+			if WarMenu.IsMenuOpened("MenuSettingsColor") then
 				if WarMenu.Button("Menu Color: ~r~Red") then
 					_menuColor.base = colorRed
 				end
@@ -3980,7 +4039,40 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("ESXBoss") then
+			end
+			if WarMenu.IsMenuOpened("ServerResources") then
+				for _, resource in pairs(validResources) do
+					if WarMenu.MenuButton(resource, 'ResourceData') then
+						SelectedResource = resource
+					end
+				end
+				WarMenu.Display()
+			end
+			if WarMenu.IsMenuOpened('ResourceData') then
+				WarMenu.SetSubTitle('ResourceData', SelectedResource .. " > Data")
+				if WarMenu.MenuButton('Event Handlers', 'ResourceCEvents') then end
+				if WarMenu.MenuButton('Server Events', 'ResourceSEvents') then end
+				WarMenu.Display()
+			end
+			if WarMenu.IsMenuOpened('ResourceCEvents') then
+				WarMenu.SetSubTitle('ResourceCEvents', SelectedResource .. " > Data > Event Handlers")
+				for key, name in pairs(validResourceEvents[SelectedResource]) do
+					if WarMenu.Button(name) then
+						print(key)
+					end
+				end
+				WarMenu.Display()
+			end
+			if WarMenu.IsMenuOpened('ResourceSEvents') then
+				WarMenu.SetSubTitle('ResourceSEvents', SelectedResource .. " > Data > Server Events")
+				for name, payload in pairs(validResourceServerEvents[SelectedResource]) do
+					if WarMenu.Button(name) then
+						print(payload)
+					end
+				end
+				WarMenu.Display()
+			end
+			if WarMenu.IsMenuOpened("ESXBoss") then
 
 				if WarMenu.Button("~c~Mechanic~s~ Boss Menu") then
 					TriggerEvent("esx_society:openBossMenu","mecano",function(data, menu)menu.close() end)
@@ -4009,7 +4101,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("ESXMoney") then
+			end
+			if WarMenu.IsMenuOpened("ESXMoney") then
 
 				if WarMenu.Button("~g~ESX ~y~Caution Give Back") then
 					local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
@@ -4049,7 +4142,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("ESXMisc") then
+			end
+			if WarMenu.IsMenuOpened("ESXMisc") then
 
 				if WarMenu.Button("~w~Set hunger to ~g~100%") then
 					TriggerEvent("esx_status:set", "hunger", 1000000)
@@ -4084,7 +4178,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("MiscServerOptions") then
+			end
+			if WarMenu.IsMenuOpened("MiscServerOptions") then
 
 				if WarMenu.Button("Send Discord Message") then
 					local Message = KeyboardInput("Enter message to send", "", 100)
@@ -4147,7 +4242,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("VRPOptions") then
+			end
+			if WarMenu.IsMenuOpened("VRPOptions") then
 
 				if WarMenu.Button("~r~VRP ~s~Give Money ~ypayGarage") then
 					local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100)
@@ -4174,7 +4270,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("ESXDrugs") then
+			end
+			if WarMenu.IsMenuOpened("ESXDrugs") then
 
 				if WarMenu.Button("~g~Harvest ~g~Weed") then
 					TriggerServerEvent("esx_drugs:startHarvestWeed")
@@ -4225,7 +4322,8 @@ Citizen.CreateThread(
 				end
 
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlinePlayersMenu") then
+			end
+			if WarMenu.IsMenuOpened("OnlinePlayersMenu") then
 				onlinePlayerSelected = {}
 				
 				for _, i in ipairs(GetActivePlayers()) do
@@ -4240,7 +4338,8 @@ Citizen.CreateThread(
 				index = menus[currentMenu].currentOption
 				WarMenu.PopupWindow(onlinePlayerSelected[index])
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("PlayerOptionsMenu") then
+			end
+			if WarMenu.IsMenuOpened("PlayerOptionsMenu") then
 				WarMenu.SetSubTitle("PlayerOptionsMenu", "Player Options [" .. GetPlayerName(SelectedPlayer) .. "]")
 
 				if WarMenu.Button("Spectate", (Spectating and "~g~[SPECTATING]")) then
@@ -4271,7 +4370,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("ESXMenuPlayer") then
+			end
+			if WarMenu.IsMenuOpened("ESXMenuPlayer") then
 				if WarMenu.Button("~g~ESX ~s~Send Bill") then
 					local amount = KeyboardInput("Enter Amount", "", 10)
 					local name = KeyboardInput("Enter the name of the Bill", "", 25)
@@ -4289,13 +4389,15 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineWepMenu") then
+			end
+			if WarMenu.IsMenuOpened("OnlineWepMenu") then
 				WarMenu.SetSubTitle("OnlineWepMenu", "Weapon Options - " .. GetPlayerName(SelectedPlayer) .. "")
 				WarMenu.MenuButton("Give Weapon", "OnlineWepCategory")
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineWepCategory") then
+			end
+			if WarMenu.IsMenuOpened("OnlineWepCategory") then
 				WarMenu.SetSubTitle("OnlineWepCategory", "Give Weapon - " .. GetPlayerName(SelectedPlayer) .. "")
 
 				WarMenu.MenuButton("Melee Weapons", "OnlineMeleeWeapons")
@@ -4305,7 +4407,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineMeleeWeapons") then
+			end
+			if WarMenu.IsMenuOpened("OnlineMeleeWeapons") then
 				for hash, v in pairs(t_Weapons) do
 					if v[4] == "w_me" then
 						if WarMenu.Button(v[1], "isWeapon") then
@@ -4316,7 +4419,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineSidearmWeapons") then
+			end
+			if WarMenu.IsMenuOpened("OnlineSidearmWeapons") then
 				for hash, v in pairs(t_Weapons) do
 					if v[4] == "w_hg" then
 						if WarMenu.Button(v[1], "isWeapon") then
@@ -4327,7 +4431,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineAutorifleWeapons") then
+			end
+			if WarMenu.IsMenuOpened("OnlineAutorifleWeapons") then
 				for hash, v in pairs(t_Weapons) do
 					if v[4] == "w_ar" then
 						if WarMenu.Button(v[1], "isWeapon") then
@@ -4338,7 +4443,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineShotgunWeapons") then
+			end
+			if WarMenu.IsMenuOpened("OnlineShotgunWeapons") then
 				for hash, v in pairs(t_Weapons) do
 					if v[4] == "w_sg" then
 						if WarMenu.Button(v[1], "isWeapon") then
@@ -4349,7 +4455,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif WarMenu.IsMenuOpened("OnlineVehicleMenuPlayer") then
+			end
+			if WarMenu.IsMenuOpened("OnlineVehicleMenuPlayer") then
 				WarMenu.SetSubTitle("OnlineVehicleMenuPlayer", "Vehicle Options [" .. GetPlayerName(SelectedPlayer) .. "]")
 				if WarMenu.Button("Spawn Vehicle") then
 					local ModelName = KeyboardInput("Enter Vehicle Model Name", "", 100)
@@ -4458,7 +4565,8 @@ Citizen.CreateThread(
 
 				WarMenu.PopupWindow(SelectedPlayer)
 				WarMenu.Display()
-			elseif IsDisabledControlJustPressed(0, 121) then
+			end
+			if IsDisabledControlJustPressed(0, 121) then
 				GateKeep()
 			end
 
