@@ -1,5 +1,3 @@
-print("^1LOADING")
-
 local CreateThread = Citizen.CreateThread
 
 LUX = {}
@@ -24,6 +22,9 @@ LUX.Player = {
 	isNoclipping = false,
 }
 
+local NoclipSpeed = 1
+local oldSpeed = 1
+
 LUX.Game = {}
 
 local isMenuEnabled = true
@@ -41,6 +42,11 @@ local _secretKey = "devbuild"
 local _gatekeeper = true
 local _auth = false
 
+AddTextEntry('notification_buffer', '~a~')
+AddTextEntry('text_buffer', '~a~')
+AddTextEntry('preview_text_buffer', '~a~')
+AddTextEntry('keyboard_title_buffer', '~a~')
+
 -- Classes
 -- > Gatekeeper
 Gatekeeper = {}
@@ -53,7 +59,7 @@ local _errorCode = 0
 
 local _blackAmount = 0 
 -- Get other player data
-function GetPlayerMoney(player)
+local function GetPlayerMoney(player)
 	ESX.TriggerServerCallback('esx_policejob:getOtherPlayerData', function(data)
 		for k,v in ipairs(data.inventory) do
 			if v.name == 'cash' then
@@ -135,19 +141,32 @@ local t_Weapons = {
 local onlinePlayerSelected = {} -- used for Online Players menu
 
 --Fast Run/Swim Options
-HealthCB = {50, 100, 150, 200}
-HealthCBWords = {"25%", "50%", "75%", "100%"}
+local HealthCB = {50, 100, 150, 200}
+local HealthCBWords = {"25%", "50%", "75%", "100%"}
 -- Default
-SetHealthValue = 200
+local SetHealthValue = 200
 
-currFastRunIndex = 1
-selFastRunIndex = 4
+--local selectedIndex = 1
+
+local FastCB = {1.0, 1.09, 1.19, 1.29, 1.39, 1.49}
+local FastCBWords = {"Default", "+20%", "+40%", "+60%", "+80%", "+100%"}
+
+local selFastRunIndex = 1
+
+local currentMods = nil
+local EngineUpgrade = {-1, 0, 1, 2, 3}
+local VehicleUpgradeWords = {
+
+	{"Default", "Level 1"},
+	{"Default", "Level 1", "Level 2"},
+	{"Default", "Level 1", "Level 2", "Level 3"},
+	{"Default", "Level 1", "Level 2", "Level 3", "Level 4"},
+
+}
+
+
 
 local _weaponSprite = ""
-local colorRed = { r = 231, g = 76, b = 60, a = 255 } -- rgb(231, 76, 60)
-local colorGreen = { r = 26, g = 188, b = 156, a = 255 } -- rgb(46, 204, 113) -- rgb(26, 188, 156)
-local colorBlue = { r = 52, g = 152, b = 219, a = 255 } -- rgb(52, 152, 219)
-local colorPurple = { r = 155, g = 89, b = 182, a = 255 } -- rgb(155, 89, 182)
 
 local themeColors = {
 	red = { r = 231, g = 76, b = 60, a = 255 },  -- rgb(231, 76, 60)
@@ -160,6 +179,8 @@ local themeColors = {
 }
 -- Set a default menu theme
 _menuColor.base = themeColors.purple
+
+local dynamicColorTheme = false
 
 local texture_preload = {
 	"commonmenu",
@@ -179,7 +200,7 @@ local texture_preload = {
 
 local function PreloadTextures()
 	
-	print("^7Preloading texture dictionaries...")
+	--print("^7Preloading texture dictionaries...")
 	for i = 1, #texture_preload do
 		RequestStreamedTextureDict(texture_preload[i])
 	end
@@ -224,12 +245,12 @@ local function KillYourselfThread()
 	end
 end
 
+local validResources = {}
+local validResourceEvents = {}
+local validResourceServerEvents = {}
+
 local function KillYourself()
 	CreateThread(KillYourselfThread)
-end
-
-local function VerifyResource(resourceName)
-	TriggerEvent(resourceName .. ".verify", function(resource) validResources[#validResources + 1] = resource end)
 end
 
 local function GetResources()
@@ -240,14 +261,14 @@ local function GetResources()
     return resources
 end
 
-local validResources = {}
+local function VerifyResource(resourceName)
+	TriggerEvent(resourceName .. ".verify", function(resource) validResources[#validResources + 1] = resource end)
+end
 
 for i, v in ipairs(GetResources()) do
 	VerifyResource(v)
 end
 
-local validResourceEvents = {}
-local validResourceServerEvents = {}
 
 local function RefreshResourceData()
 	for i, v in ipairs(validResources) do 
@@ -387,63 +408,157 @@ function LUX.Game:TeleportToPlayer(target)
     SetEntityCoords(PlayerPedId(), pos)
 end
 
+function LUX.Game.GetVehicleProperties(vehicle)
+	if DoesEntityExist(vehicle) then
+		local colorPrimary, colorSecondary = GetVehicleColours(vehicle)
+		local pearlescentColor, wheelColor = GetVehicleExtraColours(vehicle)
+		local extras = {}
+
+		for id=0, 12 do
+			if DoesExtraExist(vehicle, id) then
+				local state = IsVehicleExtraTurnedOn(vehicle, id) == 1
+				extras[tostring(id)] = state
+			end
+		end
+
+		return {
+			model             = GetEntityModel(vehicle),
+
+			plate             = LUX.Math.Trim(GetVehicleNumberPlateText(vehicle)),
+			plateIndex        = GetVehicleNumberPlateTextIndex(vehicle),
+
+			bodyHealth        = LUX.Math.Round(GetVehicleBodyHealth(vehicle), 1),
+			engineHealth      = LUX.Math.Round(GetVehicleEngineHealth(vehicle), 1),
+
+			fuelLevel         = LUX.Math.Round(GetVehicleFuelLevel(vehicle), 1),
+			dirtLevel         = LUX.Math.Round(GetVehicleDirtLevel(vehicle), 1),
+			color1            = colorPrimary,
+			color2            = colorSecondary,
+
+			pearlescentColor  = pearlescentColor,
+			wheelColor        = wheelColor,
+
+			wheels            = GetVehicleWheelType(vehicle),
+			windowTint        = GetVehicleWindowTint(vehicle),
+
+			neonEnabled       = {
+				IsVehicleNeonLightEnabled(vehicle, 0),
+				IsVehicleNeonLightEnabled(vehicle, 1),
+				IsVehicleNeonLightEnabled(vehicle, 2),
+				IsVehicleNeonLightEnabled(vehicle, 3)
+			},
+
+			neonColor         = table.pack(GetVehicleNeonLightsColour(vehicle)),
+			extras            = extras,
+			tyreSmokeColor    = table.pack(GetVehicleTyreSmokeColor(vehicle)),
+
+			modSpoilers       = GetVehicleMod(vehicle, 0),
+			modFrontBumper    = GetVehicleMod(vehicle, 1),
+			modRearBumper     = GetVehicleMod(vehicle, 2),
+			modSideSkirt      = GetVehicleMod(vehicle, 3),
+			modExhaust        = GetVehicleMod(vehicle, 4),
+			modFrame          = GetVehicleMod(vehicle, 5),
+			modGrille         = GetVehicleMod(vehicle, 6),
+			modHood           = GetVehicleMod(vehicle, 7),
+			modFender         = GetVehicleMod(vehicle, 8),
+			modRightFender    = GetVehicleMod(vehicle, 9),
+			modRoof           = GetVehicleMod(vehicle, 10),
+
+			modEngine         = GetVehicleMod(vehicle, 11),
+			modBrakes         = GetVehicleMod(vehicle, 12),
+			modTransmission   = GetVehicleMod(vehicle, 13),
+			modHorns          = GetVehicleMod(vehicle, 14),
+			modSuspension     = GetVehicleMod(vehicle, 15),
+			modArmor          = GetVehicleMod(vehicle, 16),
+
+			modTurbo          = IsToggleModOn(vehicle, 18),
+			modSmokeEnabled   = IsToggleModOn(vehicle, 20),
+			modXenon          = IsToggleModOn(vehicle, 22),
+
+			modFrontWheels    = GetVehicleMod(vehicle, 23),
+			modBackWheels     = GetVehicleMod(vehicle, 24),
+
+			modPlateHolder    = GetVehicleMod(vehicle, 25),
+			modVanityPlate    = GetVehicleMod(vehicle, 26),
+			modTrimA          = GetVehicleMod(vehicle, 27),
+			modOrnaments      = GetVehicleMod(vehicle, 28),
+			modDashboard      = GetVehicleMod(vehicle, 29),
+			modDial           = GetVehicleMod(vehicle, 30),
+			modDoorSpeaker    = GetVehicleMod(vehicle, 31),
+			modSeats          = GetVehicleMod(vehicle, 32),
+			modSteeringWheel  = GetVehicleMod(vehicle, 33),
+			modShifterLeavers = GetVehicleMod(vehicle, 34),
+			modAPlate         = GetVehicleMod(vehicle, 35),
+			modSpeakers       = GetVehicleMod(vehicle, 36),
+			modTrunk          = GetVehicleMod(vehicle, 37),
+			modHydrolic       = GetVehicleMod(vehicle, 38),
+			modEngineBlock    = GetVehicleMod(vehicle, 39),
+			modAirFilter      = GetVehicleMod(vehicle, 40),
+			modStruts         = GetVehicleMod(vehicle, 41),
+			modArchCover      = GetVehicleMod(vehicle, 42),
+			modAerials        = GetVehicleMod(vehicle, 43),
+			modTrimB          = GetVehicleMod(vehicle, 44),
+			modTank           = GetVehicleMod(vehicle, 45),
+			modWindows        = GetVehicleMod(vehicle, 46),
+			modLivery         = GetVehicleLivery(vehicle)
+		}
+	else
+		return
+	end
+end
+
 
 -- Config for LSC
 local LSC = {}
-LSC.vehicleMods = {
-	{name = "Spoilers", id = 0},
-	{name = "Front Bumper", id = 1},
-	{name = "Rear Bumper", id = 2},
-	{name = "Side Skirt", id = 3},
-	{name = "Exhaust", id = 4},
-	{name = "Frame", id = 5},
-	{name = "Grille", id = 6},
-	{name = "Hood", id = 7},
-	{name = "Fender", id = 8},
-	{name = "Right Fender", id = 9},
-	{name = "Roof", id = 10},
-	{name = "Vanity Plates", id = 25},
-	{name = "Trim", id = 27},
-	{name = "Ornaments", id = 28},
-	{name = "Dashboard", id = 29},
-	{name = "Dial", id = 30},
-	{name = "Door Speaker", id = 31},
-	{name = "Seats", id = 32},
-	{name = "Steering Wheel", id = 33},
-	{name = "Shifter Leavers", id = 34},
-	{name = "Plaques", id = 35},
-	{name = "Speakers", id = 36},
-	{name = "Trunk", id = 37},
-	{name = "Hydraulics", id = 38},
-	{name = "Engine Block", id = 39},
-	{name = "Air Filter", id = 40},
-	{name = "Struts", id = 41},
-	{name = "Arch Cover", id = 42},
-	{name = "Aerials", id = 43},
-	{name = "Trim 2", id = 44},
-	{name = "Tank", id = 45},
-	{name = "Windows", id = 46},
-	{name = "Livery", id = 48},
-	{name = "Horns", id = 14},
-	{name = "Wheels", id = 23},
-	{name = "Wheel Types", id = "wheeltypes"},
-	{name = "Extras", id = "extra"},
-	{name = "Neons", id = "neon"},
-	{name = "Paint", id = "paint"},
-}
 
-local tuneMods = {
-	Engine = 11,
-	Brakes = 12,
-	Transmission = 13,
-	Suspension = 15,
+LSC.vehicleMods = {
+	{name = "Spoilers", id = 0, meta = "modSpoilers"},
+	{name = "Front Bumper", id = 1, meta = "modFrontBumper"},
+	{name = "Rear Bumper", id = 2, meta = "modRearBumper"},
+	{name = "Side Skirt", id = 3, meta = "modSideSkirt"},
+	{name = "Exhaust", id = 4, meta = "modExhaust"},
+	{name = "Frame", id = 5, meta = "modFrame"},
+	{name = "Grille", id = 6, meta = "modGrille"},
+	{name = "Hood", id = 7, meta = "modHood"},
+	{name = "Fender", id = 8, meta = "modFender"},
+	{name = "Right Fender", id = 9, meta = "modRightFender"},
+	{name = "Roof", id = 10, meta = "modRoof"},
+	{name = "Vanity Plates", id = 26, meta = "modVanityPlate"},
+	{name = "Trim", id = 27, meta = "modTrim"},
+	{name = "Ornaments", id = 28, meta = "modOrnaments"},
+	{name = "Dashboard", id = 29, meta = "modDashboard"},
+	{name = "Dial", id = 30, meta = "modDial"},
+	{name = "Door Speaker", id = 31, meta = "modDoorSpeaker"},
+	{name = "Seats", id = 32, meta = "modSeats"},
+	{name = "Steering Wheel", id = 33, meta = "modSteeringWheel"},
+	{name = "Shifter Leavers", id = 34, meta = "modShifterLeavers"},
+	{name = "Plaques", id = 35, meta = "modPlaques"},
+	{name = "Speakers", id = 36, meta = "modSpeakers"},
+	{name = "Trunk", id = 37, meta = "modTrunk"},
+	{name = "Hydraulics", id = 38, meta = "modHydraulics"},
+	{name = "Engine Block", id = 39, meta = "modEngineBlock"},
+	{name = "Air Filter", id = 40, meta = "modAirFilter"},
+	{name = "Struts", id = 41, meta = "modStruts"},
+	{name = "Arch Cover", id = 42, meta = "modArchCover"},
+	{name = "Aerials", id = 43, meta = "modAerials"},
+	{name = "Trim 2", id = 44, meta = "modTrimB"},
+	{name = "Tank", id = 45, meta = "modTank"},
+	{name = "Windows", id = 46, meta = "modWindows"},
+	{name = "Livery", id = 48, meta = "modLivery"},
+	{name = "Horns", id = 14, meta = "modHorns"},
+	{name = "Wheels", id = 23, meta = "modFrontWheels"},
+	{name = "Back Wheels", id = 24, meta = "modBackWheels"},
+	-- {name = "Wheel Types", id = "wheeltypes"},
+	-- {name = "Extras", id = "extra"},
+	-- {name = "Neons", id = "neon"},
+	-- {name = "Paint", id = "paint"},
 }
 
 LSC.perfMods = {
-	{name = "Engine", id = 11},
-	{name = "Brakes", id = 12},
-	{name = "Transmission", id = 13},
-	{name = "Suspension", id = 15},
+	{name = "Engine", id = 11, meta = "modEngine"},
+	{name = "Brakes", id = 12, meta = "modBrakes"},
+	{name = "Transmission", id = 13, meta = "modTransmission"},
+	{name = "Suspension", id = 15, meta = "modSuspension"},
 }
 
 LSC.horns = {
@@ -485,6 +600,8 @@ LSC.horns = {
 	["Classical Loop 2"] = 34,
 
 }
+
+LSC.WheelType = {"Sport", "Muscle", "Lowrider", "SUV", "Offroad", "Tuner", "Bike Wheels", "High End"}
 
 LSC.neonColors = {
 	["White"] = {255,255,255},
@@ -609,6 +726,121 @@ LSC.paintsMetal = {
 	{name = "Pure Gold", id = 158},
 	{name = "Brushed Gold", id = 159},
 }
+
+function LSC.GetHornName(index)
+	if (index == 0) then
+		return "Truck Horn"
+	elseif (index == 1) then
+		return "Cop Horn"
+	elseif (index == 2) then
+		return "Clown Horn"
+	elseif (index == 3) then
+		return "Musical Horn 1"
+	elseif (index == 4) then
+		return "Musical Horn 2"
+	elseif (index == 5) then
+		return "Musical Horn 3"
+	elseif (index == 6) then
+		return "Musical Horn 4"
+	elseif (index == 7) then
+		return "Musical Horn 5"
+	elseif (index == 8) then
+		return "Sad Trombone"
+	elseif (index == 9) then
+		return "Classical Horn 1"
+	elseif (index == 10) then
+		return "Classical Horn 2"
+	elseif (index == 11) then
+		return "Classical Horn 3"
+	elseif (index == 12) then
+		return "Classical Horn 4"
+	elseif (index == 13) then
+		return "Classical Horn 5"
+	elseif (index == 14) then
+		return "Classical Horn 6"
+	elseif (index == 15) then
+		return "Classical Horn 7"
+	elseif (index == 16) then
+		return "Scale - Do"
+	elseif (index == 17) then
+		return "Scale - Re"
+	elseif (index == 18) then
+		return "Scale - Mi"
+	elseif (index == 19) then
+		return "Scale - Fa"
+	elseif (index == 20) then
+		return "Scale - Sol"
+	elseif (index == 21) then
+		return "Scale - La"
+	elseif (index == 22) then
+		return "Scale - Ti"
+	elseif (index == 23) then
+		return "Scale - Do"
+	elseif (index == 24) then
+		return "Jazz Horn 1"
+	elseif (index == 25) then
+		return "Jazz Horn 2"
+	elseif (index == 26) then
+		return "Jazz Horn 3"
+	elseif (index == 27) then
+		return "Jazz Horn Loop"
+	elseif (index == 28) then
+		return "Star Spangled Banner 1"
+	elseif (index == 29) then
+		return "Star Spangled Banner 2"
+	elseif (index == 30) then
+		return "Star Spangled Banner 3"
+	elseif (index == 31) then
+		return "Star Spangled Banner 4"
+	elseif (index == 32) then
+		return "Classical Horn 8 Loop"
+	elseif (index == 33) then
+		return "Classical Horn 9 Loop"
+	elseif (index == 34) then
+		return "Classical Horn 10 Loop"
+	elseif (index == 35) then
+		return "Classical Horn 8"
+	elseif (index == 36) then
+		return "Classical Horn 9"
+	elseif (index == 37) then
+		return "Classical Horn 10"
+	elseif (index == 38) then
+		return "Funeral Loop"
+	elseif (index == 39) then
+		return "Funeral"
+	elseif (index == 40) then
+		return "Spooky Loop"
+	elseif (index == 41) then
+		return "Spooky"
+	elseif (index == 42) then
+		return "San Andreas Loop"
+	elseif (index == 43) then
+		return "San Andreas"
+	elseif (index == 44) then
+		return "Liberty City Loop"
+	elseif (index == 45) then
+		return "Liberty City"
+	elseif (index == 46) then
+		return "Festive 1 Loop"
+	elseif (index == 47) then
+		return "Festive 1"
+	elseif (index == 48) then
+		return "Festive 2 Loop"
+	elseif (index == 49) then
+		return "Festive 2"
+	elseif (index == 50) then
+		return "Festive 3 Loop"
+	elseif (index == 51) then
+		return "Festive 3"
+	else
+		return "Unknown Horn"
+	end
+end
+
+function LSC.UpdateMods()
+	currentMods = LUX.Game.GetVehicleProperties(LUX.Player.Vehicle)
+	--SetVehicleModKit(LUX.Player.Vehicle, 0)
+end
 
 function LSC:CheckValidVehicleExtras()
 	local playerPed = PlayerPedId()
@@ -1437,12 +1669,12 @@ VehicleClass.commercial = {
 }
 
 ---------------------
---  WarMenu Class  --
+--  LuxUI Class  --
 ---------------------
 
-WarMenu = {}
+LuxUI = {}
 
-WarMenu.debug = false
+LuxUI.debug = false
 
 local menus = {}
 local keys = {up = 172, down = 173, left = 174, right = 175, select = 176, back = 177}
@@ -1454,7 +1686,7 @@ local currentMenu = nil
 local aspectRatio = GetAspectRatio(true)
 local screenResolution = GetActiveScreenResolution()
 
-local menuWidth = 0.19 --0.23
+local menuWidth = 0.19 -- old version was 0.23
 local titleHeight = 0.11
 local titleYOffset = 0.03
 local titleScale = 1.0
@@ -1471,10 +1703,21 @@ local buttonSpriteScale = { x = 0.016, y = 0 }
 
 local fontHeight = GetTextScaleHeight(buttonScale, buttonFont)
 
+local sliderWidth = (menuWidth / 4)
+
+local sliderHeight = 0.014
+
+local knobWidth = 0.002
+local knobHeight = 0.014
+
+local sliderFontScale = 0.275
+local sliderFontHeight = GetTextScaleHeight(sliderFontScale, buttonFont)
+
+
 local toggleInnerWidth = 0.008
 local toggleInnerHeight = 0.014
-local toggleOuterWidth = 0.012
-local toggleOuterHeight = 0.021
+local toggleOuterWidth = 0.01125
+local toggleOuterHeight = 0.020
 
 -- Vehicle preview, PlayerInfo, etc
 local previewWidth = 0.100
@@ -1494,10 +1737,14 @@ local cos = math.cos
 local sqrt = math.sqrt
 local abs = math.abs
 local asin  = math.asin
--- t = time == how much time has to pass for the tweening to complete
--- b = begin == starting property value
--- c = change == ending - beginning
--- d = duration == running time. How much time has passed *right now*
+
+------------------------------------------------------------------------
+-- t = time == how much time has to pass for the tweening to complete --
+-- b = begin == starting property value								  --
+-- c = change == ending - beginning									  --
+-- d = duration == running time. How much time has passed *right now* --
+------------------------------------------------------------------------
+
 local cout = function(text) return end
 
 local function outCubic(t, b, c, d)
@@ -1557,7 +1804,7 @@ local notifyDefault = {
 }
 
 local function NotifyCountLines(v, text)
-	BeginTextCommandLineCount("STRING")
+	BeginTextCommandLineCount("notification_buffer")
 	SetTextFont(notifyBody.font)
 	SetTextScale(notifyBody.scale, notifyBody.scale)
 	SetTextWrap(v.x, v.x + notifyBody.width / 2)
@@ -1639,8 +1886,6 @@ local properties = { -- 0.72
 	offset = NotifyPrioritize,
 }
 
--- setmetatable(properties["default"].notif, {__gc = function (self) print("item " .. n .." collected") end})
-
 local sound_type = {
 	['success'] = { name = "CHALLENGE_UNLOCKED", set = "HUD_AWARDS"},
 	['info'] = { name = "FocusIn", set = "HintCamSounds" },
@@ -1660,7 +1905,7 @@ local function NotifyDrawText(v, text)
 	SetTextWrap(v.x, v.x + (menuWidth / 2))
 	SetTextColour(255, 255, 255, v.opacity)
 
-	BeginTextCommandDisplayText("STRING")
+	BeginTextCommandDisplayText("notification_buffer")
 	AddTextComponentSubstringPlayerName("    " .. text)
 	EndTextCommandDisplayText(v.x - notifyBody.width / 2 + frameWidth / 2 + buttonTextXOffset, v.y - notifyBody.gap) -- (notifyBody.height / 2 - fontHeight / 2)
 end
@@ -1779,7 +2024,7 @@ local function NotifyNewThread(options)
 	local function NotifyDraw()
 		SetScriptGfxDrawOrder(5)
 		while p.notif[id].draw do
-			if WarMenu.IsAnyMenuOpened() then
+			if LuxUI.IsAnyMenuOpened() then
 				NotifyDrawBackground(p.notif[id])
 				NotifyDrawText(p.notif[id], text)
 			end
@@ -1873,23 +2118,16 @@ local function NotifyNewThread(options)
 
 end
 
--- Invokes NotifyNewThread
-local function drawNotification(options)
-	local InvokeNotification = function() return NotifyNewThread(options) end
-	-- Delegate coroutine
-	CreateThread(InvokeNotification) 
-end
 
 local function debugPrint(text)
-	if WarMenu.debug then
-		Citizen.Trace("[WarMenu] " .. text)
+	if LuxUI.debug then
+		Citizen.Trace("[LuxUI] " .. text)
 	end
 end
 
 local function setMenuProperty(id, property, value)
 	if id and menus[id] then
 		menus[id][property] = value
-		debugPrint(id .. " menu property changed: { " .. tostring(property) .. ", " .. tostring(value) .. " }")
 	end
 end
 
@@ -1918,6 +2156,26 @@ local function setMenuVisible(id, visible, restoreIndex)
 
 			currentMenu = id
 		end
+
+		
+		if dynamicColorTheme then
+
+			if isMenuVisible("SelfMenu") then
+				_menuColor.base = themeColors.green
+			elseif isMenuVisible("OnlinePlayersMenu") then
+				_menuColor.base = themeColors.blue
+			elseif isMenuVisible("VisualMenu") then
+				_menuColor.base = themeColors.white
+			elseif isMenuVisible("TeleportMenu") then
+				_menuColor.base = themeColors.yellow
+			elseif isMenuVisible("LocalVehicleMenu") then
+				_menuColor.base = themeColors.orange
+			elseif isMenuVisible("LocalWepMenu") then
+				_menuColor.base = themeColors.red
+			elseif isMenuVisible("LuxMainMenu") then
+				_menuColor.base = themeColors.purple 
+			end
+		end
 	end
 end
 
@@ -1938,9 +2196,9 @@ local function drawText(text, x, y, font, color, scale, center, shadow, alignRig
 			SetTextRightJustify(true)
 		end
 	end
-	SetTextEntry("STRING")
+	BeginTextCommandDisplayText("text_buffer")
 	AddTextComponentString(text)
-	DrawText(x, y)
+	EndTextCommandDisplayText(x, y)
 end
 
 local function drawPreviewText(text, x, y, font, color, scale, center, shadow, alignRight)
@@ -1961,9 +2219,9 @@ local function drawPreviewText(text, x, y, font, color, scale, center, shadow, a
 			SetTextRightJustify(true)
 		end
 	end
-	SetTextEntry("STRING")
+	BeginTextCommandDisplayText("preview_text_buffer")
 	AddTextComponentString(text)
-	DrawText(x, y)
+	EndTextCommandDisplayText(x, y)
 end
 
 local function drawRect(x, y, width, height, color)
@@ -2097,13 +2355,12 @@ local function drawFooter()
 
 		if welcomeMsg then
 			welcomeMsg = false
-			drawNotification({text = "LUX is currently in beta! If you experience any issues, please contact leuit#0100 on Discord!", type = "info"})
+			LuxUI.SendNotification({text = "LUX is currently in beta! If you experience any issues, please contact leuit#0100 on Discord!", type = "info"})
 		end
 	end
 end
 
--- [NOTE] MenuDrawButton
-local function drawButton(text, subText, color)
+local function drawButton(text, subText, color, subcolor)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
 	local pointer = true
@@ -2128,13 +2385,13 @@ local function drawButton(text, subText, color)
 			backgroundColor = menus[currentMenu].menuFocusBackgroundColor
 			textColor = color or menus[currentMenu].menuFocusTextColor
 			pointColor = menus[currentMenu].menuFocusPointerColor
-			subTextColor = menus[currentMenu].menuSubTextColor
+			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
 			selectionColor = { r = 255, g = 255, b = 255, a = 255 }
 		else
 			backgroundColor = menus[currentMenu].menuBackgroundColor
 			textColor = color or menus[currentMenu].menuTextColor
-			subTextColor = menus[currentMenu].menuSubTextColor
 			pointColor = menus[currentMenu].menuInvisibleColor
+			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
 			selectionColor = menus[currentMenu].menuInvisibleColor
 			--shadow = true
 		end
@@ -2184,7 +2441,7 @@ local function drawButton(text, subText, color)
 
 		if subText == "isMenu" then
 			DrawSpriteScaled("mparrow", "mp_arrowlarge", x + menuWidth / 2.25, y, 0.008, nil, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
-			menus[currentMenu].title = ""
+			-- menus[currentMenu].title = ""
 		elseif subText == "isWeapon" then
 			menus[currentMenu].background = "weaponlist"
 			local x = menus[currentMenu].x + menuWidth / 2
@@ -2197,16 +2454,15 @@ local function drawButton(text, subText, color)
 			end
 		elseif subText == "toggleOff" then
 			x = x + menuWidth / 2 - frameWidth / 2 - toggleOuterWidth / 2 - buttonTextXOffset
-			drawRect(x, y, toggleOuterWidth, toggleOuterHeight, {r = 40, g = 40, b = 40, a = 255})
-			drawRect(x, y, toggleInnerWidth, toggleInnerHeight, {r = 90, g = 90, b = 90, a = 255})
+			drawRect(x, y, toggleOuterWidth, toggleOuterHeight, menus[currentMenu].buttonSubBackgroundColor)
+			-- drawRect(x, y, toggleInnerWidth, toggleInnerHeight, {r = 90, g = 90, b = 90, a = 230})
 		elseif subText == "toggleOn" then
 			x = x + menuWidth / 2 - frameWidth / 2 - toggleOuterWidth / 2 - buttonTextXOffset
-			--DrawSpriteScaled("commonmenu", "shop_tick_icon", x + menuWidth / 2.3, y, 0.026, nil, 0.0, _menuColor.base.r, _menuColor.base.g, _menuColor.base.b, 255)
-			drawRect(x, y, toggleOuterWidth, toggleOuterHeight, {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 70})
-			drawRect(x, y, toggleInnerWidth, toggleInnerHeight, _menuColor.base) -- 26, 188, 156, 255
+			drawRect(x, y, toggleOuterWidth, toggleOuterHeight, menus[currentMenu].buttonSubBackgroundColor)
+			DrawSpriteScaled("commonmenu", "shop_tick_icon", x, y, 0.020, nil, 0.0, _menuColor.base.r, _menuColor.base.g, _menuColor.base.b, 255)
+			--drawRect(x, y, toggleInnerWidth, toggleInnerHeight, _menuColor.base) -- 26, 188, 156, 255
 		elseif subText == "danger" then
-			DrawSpriteScaled("commonmenu", "mp_alerttriangle", x + menuWidth / 2.35, y, 0.024, nil, 0.0, 255, 255, 255, 255)
-			subText = nil
+			DrawSpriteScaled("commonmenu", "mp_alerttriangle", x + menuWidth / 2.35, y, 0.021, nil, 0.0, 255, 255, 255, 255)
 		elseif subText then			
 			drawText(
 				subText,
@@ -2225,8 +2481,95 @@ local function drawButton(text, subText, color)
 	end
 end
 
+local function drawComboBox(text, subText, color, subcolor)
+	local x = menus[currentMenu].x + menuWidth / 2
+	local multiplier = nil
+	local pointer = true
 
-function WarMenu.CreateMenu(id, title)
+	if menus[currentMenu].currentOption <= menus[currentMenu].maxOptionCount and optionCount <= menus[currentMenu].maxOptionCount then
+		multiplier = optionCount
+	elseif
+		optionCount > menus[currentMenu].currentOption - menus[currentMenu].maxOptionCount and
+			optionCount <= menus[currentMenu].currentOption
+	 then
+		multiplier = optionCount - (menus[currentMenu].currentOption - menus[currentMenu].maxOptionCount)
+	end
+
+	if multiplier then
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + 0.0025 + (buttonHeight * multiplier) - buttonHeight / 2 -- 0.0025 is the offset for the line under subTitle
+		local backgroundColor = nil
+		local textColor = nil
+		local subTextColor = nil
+		local shadow = false
+
+		if menus[currentMenu].currentOption == optionCount then
+			backgroundColor = menus[currentMenu].menuFocusBackgroundColor
+			textColor = color or menus[currentMenu].menuFocusTextColor
+			pointColor = menus[currentMenu].menuFocusPointerColor
+			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
+			selectionColor = { r = 255, g = 255, b = 255, a = 255 }
+		else
+			backgroundColor = menus[currentMenu].menuBackgroundColor
+			textColor = color or menus[currentMenu].menuTextColor
+			pointColor = menus[currentMenu].menuInvisibleColor
+			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
+			selectionColor = menus[currentMenu].menuInvisibleColor
+			--shadow = true
+		end
+
+		drawRect(x, y, menuWidth, buttonHeight, backgroundColor)
+
+		if (text ~= "~r~Grief Menu" and text ~= "~b~Menu Settings") and menus[currentMenu].subTitle == "MAIN MENU" then -- and subText == "isMenu"
+			drawText(
+			text,
+			menus[currentMenu].x + 0.020,
+			y - (buttonHeight / 2) + buttonTextYOffset,
+			buttonFont,
+			textColor,
+			buttonScale,
+			false,
+			shadow
+			)
+		else
+			drawText(
+			text,
+			menus[currentMenu].x + buttonTextXOffset,
+			y - (buttonHeight / 2) + buttonTextYOffset,
+			buttonFont,
+			textColor,
+			buttonScale,
+			false,
+			shadow
+			)
+		end
+			
+			-- menus[currentMenu].title = ""
+		if subText then
+			--DrawSpriteScaled("mparrow", "mp_arrowlarge", x + menuWidth / 2.25, y, 0.008, nil, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)			
+			drawText(
+				subText,
+				menus[currentMenu].x + 0.005,
+				y - buttonHeight / 2 + buttonTextYOffset,
+				buttonFont,
+				subTextColor,
+				buttonScale,
+				false,
+				shadow,
+				true
+			)
+		end
+
+	end
+end
+
+-- Invokes NotifyNewThread
+function LuxUI.SendNotification(options)
+	local InvokeNotification = function() return NotifyNewThread(options) end
+	-- Delegate coroutine
+	CreateThread(InvokeNotification) 
+end
+
+function LuxUI.CreateMenu(id, title)
 	-- Default settings
 	menus[id] = {}
 	menus[id].title = title
@@ -2253,18 +2596,19 @@ function WarMenu.CreateMenu(id, title)
 	menus[id].background = "default"
 	menus[id].titleBackgroundColor = {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 180}
 
-	menus[id].menuFocusBackgroundColor = {r = 31, g = 32, b = 34, a = 230} -- rgb(155, 89, 182)
-
-	menus[id].menuTextColor = {r = 255, g = 255, b = 255, a = 255}
+	
+	menus[id].menuTextColor = {r = 220, g = 220, b = 220, a = 255}
 	menus[id].menuSubTextColor = {r = 140, g = 140, b = 140, a = 255}
-
+	
 	menus[id].menuFocusTextColor = {r = 255, g = 255, b = 255, a = 255}
-	--menus[id].menuFocusBackgroundColor = { r = 245, g = 245, b = 245, a = 255 }
+	menus[id].menuFocusBackgroundColor = {r = 23, g = 28, b = 29, a = 240} -- rgb(31, 32, 34) rgb(155, 89, 182) #9b59b6
 	menus[id].menuFocusPointerColor = {r = 255, g = 255, b = 255, a = 128}
 
-	menus[id].menuBackgroundColor = {r = 18, g = 18, b = 18, a = 230} -- #121212
+	menus[id].menuBackgroundColor = {r = 18, g = 20, b = 20, a = 240} -- #121212
 	menus[id].menuFrameColor = {r = 0, g = 0, b = 0, a = 255}
 	menus[id].menuInvisibleColor = { r = 0, g = 0, b = 0, a = 0 }
+
+	menus[id].buttonSubBackgroundColor = {r = 35, g = 39, b = 40, a = 255}
 
 	menus[id].subTitleBackgroundColor = {
 		r = menus[id].menuBackgroundColor.r,
@@ -2274,13 +2618,11 @@ function WarMenu.CreateMenu(id, title)
 	}
 
 	menus[id].buttonPressedSound = {name = "SELECT", set = "HUD_FRONTEND_DEFAULT_SOUNDSET"} --https://pastebin.com/0neZdsZ5
-
-	debugPrint(tostring(id) .. " menu created")
 end
 
-function WarMenu.CreateSubMenu(id, parent, subTitle)
+function LuxUI.CreateSubMenu(id, parent, subTitle)
 	if menus[parent] then
-		WarMenu.CreateMenu(id, menus[parent].title)
+		LuxUI.CreateMenu(id, menus[parent].title)
 
 		if subTitle then
 			setMenuProperty(id, "subTitle", string.upper(subTitle))
@@ -2303,16 +2645,16 @@ function WarMenu.CreateSubMenu(id, parent, subTitle)
 		setMenuProperty(id, "menuFocusBackgroundColor", menus[parent].menuFocusBackgroundColor)
 		setMenuProperty(id, "menuBackgroundColor", menus[parent].menuBackgroundColor)
 		setMenuProperty(id, "subTitleBackgroundColor", menus[parent].subTitleBackgroundColor)
-	else
-		debugPrint("Failed to create " .. tostring(id) .. " submenu: " .. tostring(parent) .. " parent menu doesn't exist")
+		
+		setMenuProperty(id, "buttonSubBackgroundColor", menus[parent].buttonSubBackgroundColor)
 	end
 end
 
-function WarMenu.CurrentMenu()
+function LuxUI.CurrentMenu()
 	return currentMenu
 end
 
-function WarMenu.OpenMenu(id)
+function LuxUI.OpenMenu(id)
 	if id and menus[id] then
 		if menus[id].titleBackgroundSprite then
 			RequestStreamedTextureDict(menus[id].titleBackgroundSprite.dict, false)
@@ -2320,22 +2662,17 @@ function WarMenu.OpenMenu(id)
 				Citizen.Wait(0)
 			end
 		end
-
 		
 		setMenuVisible(id, true)
 		PlaySoundFrontend(-1, "SELECT", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
-		
-		debugPrint(tostring(id) .. " menu opened")
-	else
-		debugPrint("Failed to open " .. tostring(id) .. " menu: it doesn't exist")
 	end
 end
 
-function WarMenu.IsMenuOpened(id)
+function LuxUI.IsMenuOpened(id)
 	return isMenuVisible(id)
 end
 
-function WarMenu.IsAnyMenuOpened()
+function LuxUI.IsAnyMenuOpened()
 	for id, _ in pairs(menus) do
 		if isMenuVisible(id) then
 			return true
@@ -2345,7 +2682,7 @@ function WarMenu.IsAnyMenuOpened()
 	return false
 end
 
-function WarMenu.IsMenuAboutToBeClosed()
+function LuxUI.IsMenuAboutToBeClosed()
 	if menus[currentMenu] then
 		return menus[currentMenu].aboutToBeClosed
 	else
@@ -2353,153 +2690,137 @@ function WarMenu.IsMenuAboutToBeClosed()
 	end
 end
 
-function WarMenu.CloseMenu()
+function LuxUI.CloseMenu()
 	if menus[currentMenu] then
 		if menus[currentMenu].aboutToBeClosed then
 			menus[currentMenu].aboutToBeClosed = false
 			setMenuVisible(currentMenu, false)
-			debugPrint(tostring(currentMenu) .. " menu closed")
 			PlaySoundFrontend(-1, "QUIT", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 			optionCount = 0
 			currentMenu = nil
 			currentKey = nil
 		else
 			menus[currentMenu].aboutToBeClosed = true
-			debugPrint(tostring(currentMenu) .. " menu about to be closed")
 		end
 	end
 end
 
-function WarMenu.Button(text, subText, color)
-	local buttonText = text
+function LuxUI.Button(text, subText, color, subcolor)
 
 	if menus[currentMenu] then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
 
-		drawButton(text, subText, color)
+		drawButton(text, subText, color, subcolor)
 
 		if isCurrent then
 			if currentKey == keys.select then
 				PlaySoundFrontend(-1, menus[currentMenu].buttonPressedSound.name, menus[currentMenu].buttonPressedSound.set, true)
-				debugPrint(buttonText .. " button pressed")
 				return true
-			elseif currentKey == keys.left or currentKey == keys.right then
-				PlaySoundFrontend(-1, "NAV_UP_DOWN", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 			end
 		end
 
 		return false
-	else
-		debugPrint("Failed to create " .. buttonText .. " button: " .. tostring(currentMenu) .. " menu doesn't exist")
-
-		return false
 	end
+
 end
 
 -- Button with a slider
-function WarMenu.ComboBoxSlider(text, items, currentIndex, selectedIndex, callback)
+function LuxUI.Slider(text, items, selectedIndex, callback, vehicleMod)
 	local itemsCount = #items
-	local selectedItem = items[currentIndex]
+	local selectedItem = items[selectedIndex]
 	local isCurrent = menus[currentMenu].currentOption == (optionCount + 1)
+
+	if vehicleMod then
+		selectedIndex = selectedIndex + 2
+	end
 
 	if itemsCount > 1 and isCurrent then
 		selectedItem = tostring(selectedItem)
 	end
 
-	if WarMenu.Button2(text, items, itemsCount, currentIndex) then
-		selectedIndex = currentIndex
-		callback(currentIndex, selectedIndex)
+	if LuxUI.SliderInternal(text, items, itemsCount, selectedIndex) then
+		callback(selectedIndex)
 		return true
 	elseif isCurrent then
 		if currentKey == keys.left then
-            if currentIndex > 1 then currentIndex = currentIndex - 1 
-            elseif currentIndex == 1 then currentIndex = 1 end
+            if selectedIndex > 1 then selectedIndex = selectedIndex - 1 end
 		elseif currentKey == keys.right then
-            if currentIndex < itemsCount then currentIndex = currentIndex + 1 
-            elseif currentIndex == itemsCount then currentIndex = itemsCount end
+            if selectedIndex < itemsCount then selectedIndex = selectedIndex + 1 end
 		end
-	else
-		currentIndex = selectedIndex
-    end
-	callback(currentIndex, selectedIndex)
+	end
+	
+	callback(selectedIndex)
 	return false
 end
 
-local function drawButton2(text, items, itemsCount, currentIndex)
+local function drawButtonSlider(text, items, itemsCount, selectedIndex)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
 
-	if menus[currentMenu].currentOption <= menus[currentMenu].maxOptionCount and optionCount <= menus[currentMenu].maxOptionCount then
+	if (menus[currentMenu].currentOption <= menus[currentMenu].maxOptionCount) and (optionCount <= menus[currentMenu].maxOptionCount) then
 		multiplier = optionCount
-	elseif optionCount > menus[currentMenu].currentOption - menus[currentMenu].maxOptionCount and optionCount <= menus[currentMenu].currentOption then
+	elseif (optionCount > menus[currentMenu].currentOption - menus[currentMenu].maxOptionCount) and (optionCount <= menus[currentMenu].currentOption) then
 		multiplier = optionCount - (menus[currentMenu].currentOption - menus[currentMenu].maxOptionCount)
 	end
 
 	if multiplier then
-		local y = menus[currentMenu].y + titleHeight + buttonHeight + (buttonHeight * multiplier) - buttonHeight / 2 + 0.0020
-		local backgroundColor = nil
-		local textColor = nil
-		local subTextColor = nil
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + 0.0025 + (buttonHeight * multiplier) - buttonHeight / 2 -- 0.0025 is the offset for the line under subTitle
+		
+		local backgroundColor = menus[currentMenu].menuBackgroundColor
+		local textColor = menus[currentMenu].menuTextColor
+		local subTextColor = menus[currentMenu].menuSubTextColor
 		local shadow = false
 
 		if menus[currentMenu].currentOption == optionCount then
 			backgroundColor = menus[currentMenu].menuFocusBackgroundColor
 			textColor = menus[currentMenu].menuFocusTextColor
 			subTextColor = menus[currentMenu].menuFocusTextColor
-		else
-			backgroundColor = menus[currentMenu].menuBackgroundColor
-			textColor = menus[currentMenu].menuTextColor
-			subTextColor = menus[currentMenu].menuSubTextColor
-			shadow = true
 		end
 
-        local sliderWidth = ((menus[currentMenu].width / 3.5) / itemsCount) 
-        local subtractionToX = ((sliderWidth * (currentIndex + 1)) - (sliderWidth * currentIndex)) / 2
+		local sliderColorBase = menus[currentMenu].buttonSubBackgroundColor
+		local sliderColorKnob = {r = 90, g = 90, b = 90, a = 255}
+		local sliderColorText = {r = 206, g = 206, b = 206, a = 200}
 
-        local XOffset = 0.16 -- Default value in case of any error?
-        local stabilizer = 1
+		if selectedIndex > 1 then
+			sliderColorBase = {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 50}
+			sliderColorKnob = {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 140}
+			sliderColorText = _menuColor.base
+		end
 
-        -- Draw order from top to bottom
-        if itemsCount >= 40 then
-            stabilizer = 1.005
-        end
+		local sliderOverlayWidth = sliderWidth / (itemsCount - 1)
 		
-        drawRect(x, y, menuWidth, buttonHeight, backgroundColor) -- Button Rectangle -2.15
-        drawRect(((menus[currentMenu].x + 0.1675) + (subtractionToX * itemsCount)) / stabilizer, y, sliderWidth * (itemsCount - 1), buttonHeight / 2, _menuColor.shadow) -- Slide Outline
-        drawRect(((menus[currentMenu].x + 0.1675) + (subtractionToX * currentIndex)) / stabilizer, y, sliderWidth * (currentIndex - 1), buttonHeight / 2, _menuColor.highlight) -- Slide
-        drawText(text, menus[currentMenu].x + buttonTextXOffset, y - (buttonHeight / 2) + buttonTextYOffset, buttonFont, textColor, buttonScale, false, shadow) -- Text
+		-- Button
+		drawRect(x, y, menuWidth, buttonHeight, backgroundColor) -- Button Rectangle -2.15
 
-        --Ugly Code, I'll refactor it later
-        local CurrentItem = tostring(items[currentIndex])
-        if string.len(CurrentItem) == 1 then XOffset = 0.1650
-        elseif string.len(CurrentItem) == 2 then XOffset = 0.1625
-        elseif string.len(CurrentItem) == 3 then XOffset = 0.16015
-        elseif string.len(CurrentItem) == 4 then XOffset = 0.1585
-        elseif string.len(CurrentItem) == 5 then XOffset = 0.1570
-        elseif string.len(CurrentItem) >= 6 then XOffset = 0.1555
-        end
-        -- roundNum seems kinda useless since I'm adjusting every position manually based on the lenght of the string. As stated above, I'll refactor this part later.
-		-- (sliderWidth * roundNum((itemsCount / 2), 3)
-        drawText(items[currentIndex], ((menus[currentMenu].x + XOffset) + 0.03) / stabilizer, y - (buttonHeight / 2.15) + buttonTextYOffset, buttonFont, {r = 255, g = 255, b = 255, a = 255}, buttonScale, false, true) -- Current Item Text
+		-- Button text
+		drawText(text, menus[currentMenu].x + buttonTextXOffset, y - (buttonHeight / 2) + buttonTextYOffset, buttonFont, textColor, buttonScale, false, shadow) -- Text
+
+		
+		-- Slider left
+        drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth / 2, y, sliderWidth, sliderHeight, sliderColorBase)
+		-- Slider right
+		drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - (sliderOverlayWidth / 2) * (itemsCount - selectedIndex), y, sliderOverlayWidth * (itemsCount - selectedIndex), sliderHeight, menus[currentMenu].buttonSubBackgroundColor)
+		-- Slider knob
+		drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth - (knobWidth / 2) + (sliderOverlayWidth) * (selectedIndex - 1), y, knobWidth, knobHeight, sliderColorKnob)
+
+		-- Slider value text
+		drawText(items[selectedIndex], x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth / 2, y + separatorHeight / 2 - (buttonHeight / 2 - sliderFontHeight / 2), buttonFont, sliderColorText, sliderFontScale, true, shadow) -- Current Item Text
 	end
 end
 
-function WarMenu.Button2(text, items, itemsCount, currentIndex)
-	local buttonText = text
-
+function LuxUI.SliderInternal(text, items, itemsCount, selectedIndex)
 	if menus[currentMenu] then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
 
-		drawButton2(text, items, itemsCount, currentIndex)
+		drawButtonSlider(text, items, itemsCount, selectedIndex)
 
 		if isCurrent then
 			if currentKey == keys.select then
 				PlaySoundFrontend(-1, menus[currentMenu].buttonPressedSound.name, menus[currentMenu].buttonPressedSound.set, true)
-				debugPrint(buttonText..' button pressed')
 				return true
 			elseif currentKey == keys.left or currentKey == keys.right then
 				PlaySoundFrontend(-1, "NAV_UP_DOWN", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
@@ -2508,34 +2829,31 @@ function WarMenu.Button2(text, items, itemsCount, currentIndex)
 
 		return false
 	else
-		debugPrint('Failed to create '..buttonText..' button: '..tostring(currentMenu)..' menu doesn\'t exist')
-
+		
 		return false
 	end
 end
 
-function WarMenu.MenuButton(text, id)
+function LuxUI.MenuButton(text, id)
 	if menus[id] then
-		if WarMenu.Button(text, "isMenu") then
+		if LuxUI.Button(text, "isMenu") then
 			setMenuVisible(id, true)
 			return true
 		end
-	else
-		debugPrint("Failed to create " .. tostring(text) .. " menu button: " .. tostring(id) .. " submenu doesn't exist")
 	end
 
 	return false
 end
 
-function WarMenu.CheckBox(text, bool, callback)
+function LuxUI.CheckBox(text, bool, callback)
 	local checked = "toggleOff"
 	if bool then
 		checked = "toggleOn"
 	end
 
-	if WarMenu.Button(text, checked) then
+	if LuxUI.Button(text, checked) then
 		bool = not bool
-		debugPrint(tostring(text) .. " checkbox changed to " .. tostring(bool))
+
 		callback(bool)
 
 		return true
@@ -2544,52 +2862,83 @@ function WarMenu.CheckBox(text, bool, callback)
 	return false
 end
 
-function WarMenu.ComboBox(text, items, currentIndex, selectedIndex, callback)
-	local itemsCount = #items
-	local selectedItem = items[currentIndex]
-	local isCurrent = menus[currentMenu].currentOption == (optionCount + 1)
+function LuxUI.ComboBoxInternal(text, selectedItem)
+	if menus[currentMenu] then
+		optionCount = optionCount + 1
 
-	if itemsCount > 1 and isCurrent then
-		selectedItem = "- " .. tostring(selectedItem) .. " -"
-	end
+		local isCurrent = menus[currentMenu].currentOption == optionCount
 
-	if WarMenu.Button(text, selectedItem) then
-		selectedIndex = currentIndex
-		callback(currentIndex, selectedIndex)
-		return true
-	elseif isCurrent then
-		if currentKey == keys.left then
-			if currentIndex > 1 then
-				currentIndex = currentIndex - 1
-			else
-				currentIndex = itemsCount
-			end
-		elseif currentKey == keys.right then
-			if currentIndex < itemsCount then
-				currentIndex = currentIndex + 1
-			else
-				currentIndex = 1
+		drawComboBox(text, selectedItem)
+
+		if isCurrent then
+			if currentKey == keys.select then
+				PlaySoundFrontend(-1, menus[currentMenu].buttonPressedSound.name, menus[currentMenu].buttonPressedSound.set, true)
+				return true
+			elseif currentKey == keys.left or currentKey == keys.right then
+				PlaySoundFrontend(-1, "NAV_UP_DOWN", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 			end
 		end
+
+		return false
 	else
-		currentIndex = selectedIndex
+		
+		return false
+	end
+end
+
+function LuxUI.ComboBox(text, items, selectedIndex, callback, vehicleMod)
+	local itemsCount = #items
+	local selectedItem = items[selectedIndex]
+	local selectedItemText = ''
+	local isCurrent = menus[currentMenu].currentOption == (optionCount + 1)
+
+	if selectedIndex == nil then
+		callback(0)
+		return false
 	end
 
-	callback(currentIndex, selectedIndex)
+	if vehicleMod then
+		selectedIndex = selectedIndex + 1
+		selectedItem = items[selectedIndex]
+	end
+
+
+	if itemsCount > 1 and isCurrent then
+		selectedItemText = "Type: " .. tostring(selectedItem)
+	end
+
+	if LuxUI.ComboBoxInternal(text, selectedItemText) then
+		callback(selectedIndex, selectedItem)
+		return true
+	end
+
+	if isCurrent then
+		if currentKey == keys.left then
+			if selectedIndex > 1 then selectedIndex = selectedIndex - 1 end
+		elseif currentKey == keys.right then
+			if selectedIndex < itemsCount then selectedIndex = selectedIndex + 1 end
+		end
+	end
+
+	callback(selectedIndex, selectedItem)
+
 	return false
 end
 
 local DrawPlayerInfo = {
 	pedHeadshot = false,
 	previous = -1,
-	txd = {},
+	txd = "null",
 	handle = nil,
 }
 
-function WarMenu.DrawPlayerInfo(player)
+function LuxUI.DrawPlayerInfo(player)
 	-- Handles running code only once per user. Will run once per `SelectedPlayer` change
-	if DrawPlayerInfo.playerPed ~= GetPlayerPed(player) then
-		
+	if DrawPlayerInfo.currentPlayer ~= player then
+
+		-- Current player selected
+		DrawPlayerInfo.currentPlayer = player
+
 		-- Drawing coordinates
 		DrawPlayerInfo.mugshotWidth = buttonHeight / aspectRatio
 		DrawPlayerInfo.mugshotHeight = DrawPlayerInfo.mugshotWidth * aspectRatio
@@ -2597,30 +2946,31 @@ function WarMenu.DrawPlayerInfo(player)
 		DrawPlayerInfo.y = menus[currentMenu].y + titleHeight
 		
 		-- Player init
-		DrawPlayerInfo.playerPed = GetPlayerPed(player)
-		DrawPlayerInfo.playerName = LUX:CheckName(GetPlayerName(player))
-		
-		-- Previous player
-		DrawPlayerInfo.previous = player
-
-		DrawPlayerInfo.pedHeadshot = false
-		if DrawPlayerInfo.handle then
-			UnregisterPedheadshot(DrawPlayerInfo.handle) 
-		end
+		DrawPlayerInfo.playerPed = GetPlayerPed(DrawPlayerInfo.currentPlayer)
+		DrawPlayerInfo.playerName = LUX:CheckName(GetPlayerName(DrawPlayerInfo.currentPlayer))
 
 		local function RegisterPedHandle()
+
+			if DrawPlayerInfo.handle and IsPedheadshotValid(DrawPlayerInfo.handle) then
+				UnregisterPedheadshot(DrawPlayerInfo.handle)
+				DrawPlayerInfo.handle = nil
+				DrawPlayerInfo.txd = "null"
+			end
+
 			-- Get the ped headshot image.
-			DrawPlayerInfo.handle = RegisterPedheadshot(ped)
+			DrawPlayerInfo.handle = RegisterPedheadshot(DrawPlayerInfo.playerPed)
 
 			while not IsPedheadshotReady(DrawPlayerInfo.handle) or not IsPedheadshotValid(DrawPlayerInfo.handle) do
-				Wait(0)
+				Wait(50)
 			end
 
 			if IsPedheadshotReady(DrawPlayerInfo.handle) and IsPedheadshotValid(DrawPlayerInfo.handle) then
-				DrawPlayerInfo.txd[player] = GetPedheadshotTxdString(DrawPlayerInfo.handle)
+				DrawPlayerInfo.txd = GetPedheadshotTxdString(DrawPlayerInfo.handle)
 				DrawPlayerInfo.pedHeadshot = true
+				return
 			else
 				DrawPlayerInfo.pedHeadshot = false
+				return
 			end
 		end
 		CreateThread(RegisterPedHandle)
@@ -2660,6 +3010,9 @@ function WarMenu.DrawPlayerInfo(player)
 	-- Update player distance every draw
 	local playerDistance = math.round(#(vector3(cx, cy, cz) - vector3(tx, ty, tz)), 1)
 
+	-- Highlife staff query
+	local highlifeRank = DecorGetInt(DrawPlayerInfo.playerPed, 'Player.Rank')
+
 	-- Player Vehicle
 	infoData[1] = {}
 	infoData[1][1] = "Vehicle"
@@ -2679,6 +3032,10 @@ function WarMenu.DrawPlayerInfo(player)
 	infoData[4] = {}
 	infoData[4][1] = "Distance"
 	infoData[4][2] = playerDistance
+
+	infoData[5] = {}
+	infoData[5][1] = "Rank"
+	infoData[5][2] = highlifeRank
 	
 	-- local infoData = {
 	-- 	tostring("Name: " .. LUX:CheckName(GetPlayerName(data))),
@@ -2689,15 +3046,16 @@ function WarMenu.DrawPlayerInfo(player)
 	-- 	tostring("Task: " .. vehicleName),
 	-- }
 
-	-- Ped preview
 	
-	-- Header (player name)
 	-- drawRect(DrawPlayerInfo.x, DrawPlayerInfo.y + footerHeight / 2, previewWidth, footerHeight, { r = 0, b = 0, g = 0, a = 255 })
+	
+	-- Header box
 	drawRect(DrawPlayerInfo.x, DrawPlayerInfo.y + DrawPlayerInfo.mugshotHeight / 2, previewWidth, DrawPlayerInfo.mugshotHeight, { r = 0, g = 0, b = 0, a = 255 })
 	drawText(DrawPlayerInfo.playerName, DrawPlayerInfo.x + DrawPlayerInfo.mugshotWidth + buttonTextXOffset / 2 - previewWidth / 2, DrawPlayerInfo.y - separatorHeight + (buttonHeight / 2 - fontHeight / 2), buttonFont, _menuColor.base, buttonScale, false, false)
 	
-	if DrawPlayerInfo.pedHeadshot == true then
-		DrawSpriteScaled(DrawPlayerInfo.txd[player], DrawPlayerInfo.txd[player], DrawPlayerInfo.x - previewWidth / 2 + DrawPlayerInfo.mugshotWidth / 2, DrawPlayerInfo.y + DrawPlayerInfo.mugshotHeight / 2, DrawPlayerInfo.mugshotWidth, 0.1, 0.0, 255, 255, 255, 255)
+	-- Ped preview
+	if DrawPlayerInfo.pedHeadshot == true and IsPedheadshotValid(DrawPlayerInfo.handle) then
+		DrawSprite(DrawPlayerInfo.txd, DrawPlayerInfo.txd, DrawPlayerInfo.x - previewWidth / 2 + DrawPlayerInfo.mugshotWidth / 2, DrawPlayerInfo.y + DrawPlayerInfo.mugshotHeight / 2, DrawPlayerInfo.mugshotWidth, DrawPlayerInfo.mugshotHeight, 0.0, 255, 255, 255, 255)
 	end
 	
 	-- Separator
@@ -2718,7 +3076,7 @@ function WarMenu.DrawPlayerInfo(player)
 
 end
 
-function WarMenu.DrawVehiclePreview(vehClass)
+function LuxUI.DrawVehiclePreview(vehClass)
 	local previewX = menus[currentMenu].x - frameWidth / 2
 	local previewY = menus[currentMenu].y + titleHeight / 2 + previewWidth
 	local class = VehicleClass[vehClass]
@@ -2733,14 +3091,13 @@ function WarMenu.DrawVehiclePreview(vehClass)
 	end
 end
 
-function WarMenu.Display()
+function LuxUI.Display()
 	if isMenuVisible(currentMenu) then
 		if menus[currentMenu].aboutToBeClosed then
-			WarMenu.CloseMenu()
+			LuxUI.CloseMenu()
 		else
 			SetScriptGfxDrawOrder(15)
-			--ClearAllHelpMessages()
-			--drawTitle()
+			-- drawTitle()
 			drawSubTitle()
 			drawFooter()
 
@@ -2773,7 +3130,7 @@ function WarMenu.Display()
 					PlaySoundFrontend(-1, "BACK", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 					setMenuVisible(menus[currentMenu].previousMenu, true, true)
 				else
-					WarMenu.CloseMenu()
+					LuxUI.CloseMenu()
 				end
 			end
 
@@ -2782,27 +3139,27 @@ function WarMenu.Display()
 	end
 end
 
-function WarMenu.SetMenuWidth(id, width)
+function LuxUI.SetMenuWidth(id, width)
 	setMenuProperty(id, "width", width)
 end
 
-function WarMenu.SetMenuX(id, x)
+function LuxUI.SetMenuX(id, x)
 	setMenuProperty(id, "x", x)
 end
 
-function WarMenu.SetMenuY(id, y)
+function LuxUI.SetMenuY(id, y)
 	setMenuProperty(id, "y", y)
 end
 
-function WarMenu.SetMenuMaxOptionCountOnScreen(id, count)
+function LuxUI.SetMenuMaxOptionCountOnScreen(id, count)
 	setMenuProperty(id, "maxOptionCount", count)
 end
 
-function WarMenu.SetTitleColor(id, r, g, b, a)
+function LuxUI.SetTitleColor(id, r, g, b, a)
 	setMenuProperty(id, "titleColor", {["r"] = r, ["g"] = g, ["b"] = b, ["a"] = a or menus[id].titleColor.a})
 end
 
-function WarMenu.SetTitleBackgroundColor(id, r, g, b, a)
+function LuxUI.SetTitleBackgroundColor(id, r, g, b, a)
 	setMenuProperty(
 		id,
 		"titleBackgroundColor",
@@ -2810,15 +3167,15 @@ function WarMenu.SetTitleBackgroundColor(id, r, g, b, a)
 	)
 end
 
-function WarMenu.SetTitleBackgroundSprite(id, textureDict, textureName)
+function LuxUI.SetTitleBackgroundSprite(id, textureDict, textureName)
 	setMenuProperty(id, "titleBackgroundSprite", {dict = textureDict, name = textureName})
 end
 
-function WarMenu.SetSubTitle(id, text)
+function LuxUI.SetSubTitle(id, text)
 	setMenuProperty(id, "subTitle", string.upper(text))
 end
 
-function WarMenu.SetMenuBackgroundColor(id, r, g, b, a)
+function LuxUI.SetMenuBackgroundColor(id, r, g, b, a)
 	setMenuProperty(
 		id,
 		"menuBackgroundColor",
@@ -2826,55 +3183,38 @@ function WarMenu.SetMenuBackgroundColor(id, r, g, b, a)
 	)
 end
 
-function WarMenu.SetMenuTextColor(id, r, g, b, a)
+function LuxUI.SetMenuTextColor(id, r, g, b, a)
 	setMenuProperty(id, "menuTextColor", {["r"] = r, ["g"] = g, ["b"] = b, ["a"] = a or menus[id].menuTextColor.a})
 end
 
-function WarMenu.SetMenuSubTextColor(id, r, g, b, a)
+function LuxUI.SetMenuSubTextColor(id, r, g, b, a)
 	setMenuProperty(id, "menuSubTextColor", {["r"] = r, ["g"] = g, ["b"] = b, ["a"] = a or menus[id].menuSubTextColor.a})
 end
 
-function WarMenu.SetMenuFocusColor(id, r, g, b, a)
+function LuxUI.SetMenuFocusColor(id, r, g, b, a)
 	setMenuProperty(id, "menuFocusColor", {["r"] = r, ["g"] = g, ["b"] = b, ["a"] = a or menus[id].menuFocusColor.a})
 end
 
-function WarMenu.SetMenuButtonPressedSound(id, name, set)
+function LuxUI.SetMenuButtonPressedSound(id, name, set)
 	setMenuProperty(id, "buttonPressedSound", {["name"] = name, ["set"] = set})
 end
 
-local function KeyboardInput(TextEntry, ExampleText, MaxStringLength)
+local function KeyboardInput(title, initialText, bufferSize)
 	local editing, finished, cancelled, notActive = 0, 1, 2, 3
 
-	AddTextEntry("FMMC_KEY_TIP1", TextEntry .. ":")
-	DisplayOnscreenKeyboard(1, "FMMC_KEY_TIP1", "", ExampleText, "", "", "", MaxStringLength)
-	blockinput = true
+	BeginTextCommandDisplayText("keyboard_title_buffer")
+	AddTextComponentSubstringPlayerName(title)
+	EndTextCommandDisplayText(0, 0)
+	DisplayOnscreenKeyboard(false, "keyboard_title_buffer", "", initialText, "", "", "", bufferSize)
 
-	while UpdateOnscreenKeyboard() ~= finished and UpdateOnscreenKeyboard() ~= cancelled do
-		Citizen.Wait(0)
+	while UpdateOnscreenKeyboard() == editing do
+		HideHudAndRadarThisFrame()
+		Wait(0)
 	end
 
-	if UpdateOnscreenKeyboard() ~= cancelled then
-		local result = GetOnscreenKeyboardResult()
-		Citizen.Wait(500)
-		blockinput = false
-		return result
-	else
-		Citizen.Wait(500)
-		blockinput = false
-		return nil
-	end
+	if GetOnscreenKeyboardResult() then return GetOnscreenKeyboardResult() end
+	
 end
-
-local function getPlayerIds()
-	local players = {}
-	for i = 0, GetNumberOfPlayers() do
-		if NetworkIsPlayerActive(i) then
-			players[#players + 1] = i
-		end
-	end
-	return players
-end
-
 
 local function DrawText3D(x, y, z, text, r, g, b)
 	SetDrawOrigin(x, y, z, 0)
@@ -2889,7 +3229,7 @@ local function DrawText3D(x, y, z, text, r, g, b)
 	SetTextEntry("STRING")
 	SetTextCentre(1)
 	AddTextComponentString(text)
-	DrawText(0.0, 0.0)
+	EndTextCommandDisplayText(0.0, 0.0)
 	ClearDrawOrigin()
 end
 
@@ -2906,7 +3246,7 @@ local function DrawText3DFill(x, y, z, text, r, g, b)
 	SetTextEntry("STRING")
 	SetTextCentre(1)
 	AddTextComponentString(text)
-	DrawText(0.0, 0.0)
+	EndTextCommandDisplayText(0.0, 0.0)
 	ClearDrawOrigin()
 end
 
@@ -2944,7 +3284,7 @@ local function TeleportToWaypoint()
 			Citizen.Wait(0)
 		end
 	else
-		drawNotification({text = "You must place a waypoint", type = 'error'})
+		LuxUI.SendNotification({text = "You must place a waypoint", type = 'error'})
 	end
 end
 
@@ -2960,12 +3300,12 @@ local function SpectatePlayer(player)
 		RequestCollisionAtCoord(GetEntityCoords(targetPed, false))
 		NetworkSetInSpectatorMode(true, targetPed)
 
-		--drawNotification("Started spectating ~b~" .. GetPlayerName(player))
+		--LuxUI.SendNotification("Started spectating ~b~" .. GetPlayerName(player))
 	else
 		RequestCollisionAtCoord(GetEntityCoords(targetPed, false))
 		NetworkSetInSpectatorMode(false, targetPed)
 
-		--drawNotification("Stopped spectating ~b~" .. GetPlayerName(player))
+		--LuxUI.SendNotification("Stopped spectating ~b~" .. GetPlayerName(player))
 	end
 end
 
@@ -3054,7 +3394,7 @@ local function RequestControl(entity)
 		Waiting = Waiting + 100
 		Citizen.Wait(100)
 		if Waiting > 5000 then
-			drawNotification("Hung for 5 seconds, killing to prevent issues...")
+			LuxUI.SendNotification("Hung for 5 seconds, killing to prevent issues...")
 		end
 	end
 end
@@ -3063,13 +3403,6 @@ local function getEntity(player)
 	local result, entity = GetEntityPlayerIsFreeAimingAt(player, Citizen.ReturnResultAnyway())
 	return entity
 end
-
-function DrawSpecialText(m_text, showtime)
-	SetTextEntry_2("STRING")
-	AddTextComponentString(m_text)
-	DrawSubtitleTimed(showtime, 1)
-end
-
 
 -- Thread that handles all menu toggles (Godmode, ESP, etc)
 local function MenuToggleThread()
@@ -3105,11 +3438,11 @@ local function MenuToggleThread()
 
 					-- Speaking display
 					-- I need to move this over to name tag code
-					if NetworkIsPlayerTalking(id) then
-						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, true ) -- Add speaking sprite
-					else
-						Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, false ) -- Remove speaking sprite
-					end
+					-- if NetworkIsPlayerTalking(id) then
+					-- 	Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, true ) -- Add speaking sprite
+					-- else
+					-- 	Citizen.InvokeNative( 0x63BB75ABEDC1F6A0, headId, 9, false ) -- Remove speaking sprite
+					-- end
 
 					-- BLIP STUFF --
 
@@ -3289,13 +3622,8 @@ local function MenuToggleThread()
 			RestorePlayerStamina(PlayerId(), 1.0)
 		end
 
-		if fastrun then
-			SetRunSprintMultiplierForPlayer(PlayerId(), 2.49)
-			SetPedMoveRateOverride(PlayerPedId(), 2.15)
-		else
-			SetRunSprintMultiplierForPlayer(PlayerId(), 1.0)
-			SetPedMoveRateOverride(PlayerPedId(), 1.0)
-		end
+		SetRunSprintMultiplierForPlayer(PlayerId(), FastCB[selFastRunIndex])
+		SetPedMoveRateOverride(PlayerPedId(), FastCB[selFastRunIndex])
 
 		if VehicleGun then
 			local VehicleGunVehicle = "Freight"
@@ -3320,7 +3648,7 @@ local function MenuToggleThread()
 		if DeleteGun then
 			local gotEntity = getEntity(PlayerId())
 			if (IsPedInAnyVehicle(PlayerPedId(), true) == false) then
-				drawNotification("~g~Delete Gun Enabled!~n~~w~Use The ~b~Pistol~n~~b~Aim ~w~and ~b~Shoot ~w~To Delete!")
+				LuxUI.SendNotification("~g~Delete Gun Enabled!~n~~w~Use The ~b~Pistol~n~~b~Aim ~w~and ~b~Shoot ~w~To Delete!")
 				GiveWeaponToPed(PlayerPedId(), GetHashKey("WEAPON_PISTOL"), 999999, false, true)
 				SetPedAmmo(PlayerPedId(), GetHashKey("WEAPON_PISTOL"), 999999)
 				if (GetSelectedPedWeapon(PlayerPedId()) == GetHashKey("WEAPON_PISTOL")) then
@@ -3332,20 +3660,20 @@ local function MenuToggleThread()
 									DeleteEntity(GetVehiclePedIsIn(gotEntity, true))
 									SetEntityAsMissionEntity(gotEntity, 1, 1)
 									DeleteEntity(gotEntity)
-									drawNotification("~g~Deleted!") -- (icon, type, sender, text)
+									LuxUI.SendNotification("~g~Deleted!") -- (icon, type, sender, text)
 								end
 							else
 								if IsControlJustReleased(1, 142) then
 									SetEntityAsMissionEntity(gotEntity, 1, 1)
 									DeleteEntity(gotEntity)
-									drawNotification("~g~Deleted!")
+									LuxUI.SendNotification("~g~Deleted!")
 								end
 							end
 						else
 							if IsControlJustReleased(1, 142) then
 								SetEntityAsMissionEntity(gotEntity, 1, 1)
 								DeleteEntity(gotEntity)
-								drawNotification("~g~Deleted!")
+								LuxUI.SendNotification("~g~Deleted!")
 							end
 						end
 					end
@@ -3591,8 +3919,6 @@ local function MenuToggleThread()
 		end
 
 		if LUX.Player.isNoclipping then
-			NoclipSpeed = 1
-			oldSpeed = nil
 			local isInVehicle = IsPedInAnyVehicle(PlayerPedId(), 0)
 			local k = nil
 			local x, y, z = nil
@@ -3615,8 +3941,9 @@ local function MenuToggleThread()
 			
 			if IsDisabledControlJustPressed(0, LUX.Keys["LEFTSHIFT"]) then -- Change speed
 				oldSpeed = NoclipSpeed
-				NoclipSpeed = NoclipSpeed * 2
+				NoclipSpeed = NoclipSpeed * 5
 			end
+			
 			if IsDisabledControlJustReleased(0, LUX.Keys["LEFTSHIFT"]) then -- Restore speed
 				NoclipSpeed = oldSpeed
 			end
@@ -3658,176 +3985,174 @@ local function MenuRuntimeThread()
 	local selectedItemIndex = 1
 
 	-- MAIN MENU
-	WarMenu.CreateMenu("LuxMainMenu", "LUX MENU")
-	WarMenu.SetSubTitle("LuxMainMenu", "Main Menu")
+	LuxUI.CreateMenu("LuxMainMenu", "LUX MENU")
+	LuxUI.SetSubTitle("LuxMainMenu", "Main Menu")
 
 	-- MAIN MENU CATEGORIES
-	WarMenu.CreateSubMenu("SelfMenu", "LuxMainMenu", "Self Options")
-	WarMenu.CreateSubMenu('OnlinePlayersMenu', 'LuxMainMenu', "Online Options")
-	WarMenu.CreateSubMenu("VisualMenu", "LuxMainMenu", "Visual Options")
-	WarMenu.CreateSubMenu("TeleportMenu", "LuxMainMenu", "Teleport Menu")
+	LuxUI.CreateSubMenu("SelfMenu", "LuxMainMenu", "Self Options")
+	LuxUI.CreateSubMenu('OnlinePlayersMenu', 'LuxMainMenu', "Online Options")
+	LuxUI.CreateSubMenu("VisualMenu", "LuxMainMenu", "Visual Options")
+	LuxUI.CreateSubMenu("TeleportMenu", "LuxMainMenu", "Teleport Menu")
 	
 	-- MAIN MENU > Vehicle Options
-	WarMenu.CreateSubMenu("LocalVehicleMenu", "LuxMainMenu", "Vehicle Options")
+	LuxUI.CreateSubMenu("LocalVehicleMenu", "LuxMainMenu", "Vehicle Options")
 	-- MAIN MENU > Vehicle Options > Vehicle Spawner
-	WarMenu.CreateSubMenu("LocalVehicleSpawner", "LocalVehicleMenu", "Vehicle Spawner")
+	LuxUI.CreateSubMenu("LocalVehicleSpawner", "LocalVehicleMenu", "Vehicle Spawner")
 	-- MAIN MENU > Vehicle Options > Vehicle Spawner > $class
-	WarMenu.CreateSubMenu("localcompacts", "LocalVehicleSpawner", "Compacts")
-	WarMenu.CreateSubMenu("localsedans", "LocalVehicleSpawner", "Sedans")
-	WarMenu.CreateSubMenu("localsuvs", "LocalVehicleSpawner", "SUVs")
-	WarMenu.CreateSubMenu("localcoupes", "LocalVehicleSpawner", "Coupes")
-	WarMenu.CreateSubMenu("localmuscle", "LocalVehicleSpawner", "Muscle")
-	WarMenu.CreateSubMenu("localsportsclassics", "LocalVehicleSpawner", "Sports Classics")
-	WarMenu.CreateSubMenu("localsports", "LocalVehicleSpawner", "Sports")
-	WarMenu.CreateSubMenu("localsuper", "LocalVehicleSpawner", "Super")
-	WarMenu.CreateSubMenu("localmotorcycles", "LocalVehicleSpawner", "Motorcycles")
-	WarMenu.CreateSubMenu("localoffroad", "LocalVehicleSpawner", "Off-Road")
-	WarMenu.CreateSubMenu("localindustrial", "LocalVehicleSpawner", "Industrial")
-	WarMenu.CreateSubMenu("localutility", "LocalVehicleSpawner", "Utility")
-	WarMenu.CreateSubMenu("localvans", "LocalVehicleSpawner", "Vans")
-	WarMenu.CreateSubMenu("localcycles", "LocalVehicleSpawner", "Cycles")
-	WarMenu.CreateSubMenu("localboats", "LocalVehicleSpawner", "Boats")
-	WarMenu.CreateSubMenu("localhelicopters", "LocalVehicleSpawner", "Helicopters")
-	WarMenu.CreateSubMenu("localplanes", "LocalVehicleSpawner", "Planes")
-	WarMenu.CreateSubMenu("localservice", "LocalVehicleSpawner", "Service")
-	WarMenu.CreateSubMenu("localcommercial", "LocalVehicleSpawner", "Commercial")
+	LuxUI.CreateSubMenu("localcompacts", "LocalVehicleSpawner", "Compacts")
+	LuxUI.CreateSubMenu("localsedans", "LocalVehicleSpawner", "Sedans")
+	LuxUI.CreateSubMenu("localsuvs", "LocalVehicleSpawner", "SUVs")
+	LuxUI.CreateSubMenu("localcoupes", "LocalVehicleSpawner", "Coupes")
+	LuxUI.CreateSubMenu("localmuscle", "LocalVehicleSpawner", "Muscle")
+	LuxUI.CreateSubMenu("localsportsclassics", "LocalVehicleSpawner", "Sports Classics")
+	LuxUI.CreateSubMenu("localsports", "LocalVehicleSpawner", "Sports")
+	LuxUI.CreateSubMenu("localsuper", "LocalVehicleSpawner", "Super")
+	LuxUI.CreateSubMenu("localmotorcycles", "LocalVehicleSpawner", "Motorcycles")
+	LuxUI.CreateSubMenu("localoffroad", "LocalVehicleSpawner", "Off-Road")
+	LuxUI.CreateSubMenu("localindustrial", "LocalVehicleSpawner", "Industrial")
+	LuxUI.CreateSubMenu("localutility", "LocalVehicleSpawner", "Utility")
+	LuxUI.CreateSubMenu("localvans", "LocalVehicleSpawner", "Vans")
+	LuxUI.CreateSubMenu("localcycles", "LocalVehicleSpawner", "Cycles")
+	LuxUI.CreateSubMenu("localboats", "LocalVehicleSpawner", "Boats")
+	LuxUI.CreateSubMenu("localhelicopters", "LocalVehicleSpawner", "Helicopters")
+	LuxUI.CreateSubMenu("localplanes", "LocalVehicleSpawner", "Planes")
+	LuxUI.CreateSubMenu("localservice", "LocalVehicleSpawner", "Service")
+	LuxUI.CreateSubMenu("localcommercial", "LocalVehicleSpawner", "Commercial")
 	
-	WarMenu.CreateSubMenu("LocalWepMenu", "LuxMainMenu", "Weapon Options")
-	WarMenu.CreateSubMenu("ServerMenu", "LuxMainMenu", "Server Menu")
-	WarMenu.CreateSubMenu("Griefer", "LuxMainMenu", "Griefer Options")
-	WarMenu.CreateSubMenu("MenuSettings", "LuxMainMenu", "Menu Settings")
+	LuxUI.CreateSubMenu("LocalWepMenu", "LuxMainMenu", "Weapon Options")
+	LuxUI.CreateSubMenu("ServerMenu", "LuxMainMenu", "Server Menu")
+	LuxUI.CreateSubMenu("Griefer", "LuxMainMenu", "Griefer Options")
+	LuxUI.CreateSubMenu("MenuSettings", "LuxMainMenu", "Menu Settings")
 	
-	WarMenu.CreateSubMenu('LSC', 'LocalVehicleMenu', "Los Santos Customs")
-	WarMenu.CreateSubMenu('tunings', 'LSC', 'Visual Tuning')
-	WarMenu.CreateSubMenu('performance', 'LSC', 'Performance Tuning')
+	LuxUI.CreateSubMenu('LSC', 'LocalVehicleMenu', "Los Santos Customs")
+	LuxUI.CreateSubMenu('lsc_bodywork', 'LSC', 'Bodywork')
+	LuxUI.CreateSubMenu('lsc_performance', 'LSC', 'Performance Tuning')
 
 	-- ONLINE PLAYERS MENU
-	WarMenu.CreateSubMenu('PlayerOptionsMenu', 'OnlinePlayersMenu', "Player Options")
+	LuxUI.CreateSubMenu('PlayerOptionsMenu', 'OnlinePlayersMenu', "Player Options")
 	
 	-- ONLINE PLAYERS > PLAYER > WEAPON OPTIONS MENU
-	WarMenu.CreateSubMenu('OnlineWepMenu', 'PlayerOptionsMenu', 'Weapon Menu')
-	WarMenu.CreateSubMenu('OnlineWepCategory', 'OnlineWepMenu', 'Give Weapon')
-	WarMenu.CreateSubMenu("OnlineMeleeWeapons", "OnlineWepCategory", "Melee Weapons")
-	WarMenu.CreateSubMenu("OnlineSidearmWeapons", "OnlineWepCategory", "Sidearms")
-	WarMenu.CreateSubMenu("OnlineAutorifleWeapons", "OnlineWepCategory", "Automatic Rifles")
-	WarMenu.CreateSubMenu("OnlineShotgunWeapons", "OnlineWepCategory", "Shotguns")
+	LuxUI.CreateSubMenu('OnlineWepMenu', 'PlayerOptionsMenu', 'Weapon Menu')
+	LuxUI.CreateSubMenu('OnlineWepCategory', 'OnlineWepMenu', 'Give Weapon')
+	LuxUI.CreateSubMenu("OnlineMeleeWeapons", "OnlineWepCategory", "Melee Weapons")
+	LuxUI.CreateSubMenu("OnlineSidearmWeapons", "OnlineWepCategory", "Sidearms")
+	LuxUI.CreateSubMenu("OnlineAutorifleWeapons", "OnlineWepCategory", "Automatic Rifles")
+	LuxUI.CreateSubMenu("OnlineShotgunWeapons", "OnlineWepCategory", "Shotguns")
 	
 	
-	WarMenu.CreateSubMenu('OnlineVehicleMenuPlayer', 'PlayerOptionsMenu', "Vehicle Options")
-	WarMenu.CreateSubMenu('ESXMenuPlayer', 'PlayerOptionsMenu', "ESX Options")
+	LuxUI.CreateSubMenu('OnlineVehicleMenuPlayer', 'PlayerOptionsMenu', "Vehicle Options")
+	LuxUI.CreateSubMenu('ESXMenuPlayer', 'PlayerOptionsMenu', "ESX Options")
 
-	WarMenu.CreateSubMenu("LocalWepCategory", "LocalWepMenu", "Give Weapon")
-	WarMenu.CreateSubMenu("LocalMeleeWeapons", "LocalWepCategory", "Melee Weapons")
-	WarMenu.CreateSubMenu("LocalSidearmWeapons", "LocalWepCategory", "Sidearms")
-	WarMenu.CreateSubMenu("LocalAutorifleWeapons", "LocalWepCategory", "Automatic Rifles")
-	WarMenu.CreateSubMenu("LocalShotgunWeapons", "LocalWepCategory", "Shotguns")
-	WarMenu.CreateSubMenu("LocalSmgWeapons", "LocalWepCategory", "SMGs/LMGs")
+	LuxUI.CreateSubMenu("LocalWepCategory", "LocalWepMenu", "Give Weapon")
+	LuxUI.CreateSubMenu("LocalMeleeWeapons", "LocalWepCategory", "Melee Weapons")
+	LuxUI.CreateSubMenu("LocalSidearmWeapons", "LocalWepCategory", "Sidearms")
+	LuxUI.CreateSubMenu("LocalAutorifleWeapons", "LocalWepCategory", "Automatic Rifles")
+	LuxUI.CreateSubMenu("LocalShotgunWeapons", "LocalWepCategory", "Shotguns")
+	LuxUI.CreateSubMenu("LocalSmgWeapons", "LocalWepCategory", "SMGs/LMGs")
 	
-	WarMenu.CreateSubMenu("ServerResources", "ServerMenu", "Server Resources")
-	WarMenu.CreateSubMenu('ResourceData', "ServerResources", "Resource Data")
-	WarMenu.CreateSubMenu('ResourceCEvents', 'ResourceData', 'Event Handlers')
-	WarMenu.CreateSubMenu('ResourceSEvents', 'ResourceData', 'Server Events')
-	WarMenu.CreateSubMenu("ESXBoss", "ServerMenu", "ESX Boss Menus")
-	WarMenu.CreateSubMenu("ESXMoney", "ServerMenu", "ESX Money Options")
-	WarMenu.CreateSubMenu("ESXMisc", "ServerMenu", "ESX Misc Options")
-	WarMenu.CreateSubMenu("ESXDrugs", "ServerMenu", "ESX Drugs")
-	WarMenu.CreateSubMenu("MiscServerOptions", "ServerMenu", "Misc Server Options")
-	WarMenu.CreateSubMenu("VRPOptions", "ServerMenu", "VRP Server Options")
+	LuxUI.CreateSubMenu("ServerResources", "ServerMenu", "Server Resources")
+	LuxUI.CreateSubMenu('ResourceData', "ServerResources", "Resource Data")
+	LuxUI.CreateSubMenu('ResourceCEvents', 'ResourceData', 'Event Handlers')
+	LuxUI.CreateSubMenu('ResourceSEvents', 'ResourceData', 'Server Events')
+	LuxUI.CreateSubMenu("ESXBoss", "ServerMenu", "ESX Boss Menus")
+	LuxUI.CreateSubMenu("ESXMoney", "ServerMenu", "ESX Money Options")
+	LuxUI.CreateSubMenu("ESXMisc", "ServerMenu", "ESX Misc Options")
+	LuxUI.CreateSubMenu("ESXDrugs", "ServerMenu", "ESX Drugs")
+	LuxUI.CreateSubMenu("MiscServerOptions", "ServerMenu", "Misc Server Options")
+	LuxUI.CreateSubMenu("VRPOptions", "ServerMenu", "VRP Server Options")
 	
-	WarMenu.CreateSubMenu("MenuSettingsColor", "MenuSettings", "Change Menu Color")
-	WarMenu.CreateSubMenu("MenuSettingsCredits", "MenuSettings", "Credits")
+	LuxUI.CreateSubMenu("MenuSettingsColor", "MenuSettings", "Change Menu Color")
+	LuxUI.CreateSubMenu("MenuSettingsCredits", "MenuSettings", "Credits")
 	
-	for i, theItem in pairs(LSC.vehicleMods) do
-		WarMenu.CreateSubMenu(theItem.id, 'tunings', theItem.name)
+	for i, mod in pairs(LSC.vehicleMods) do
+		LuxUI.CreateSubMenu(mod.meta, 'lsc_bodywork', mod.name)
 
-		if theItem.id == "paint" then
-			WarMenu.CreateSubMenu("primary", theItem.id, "Primary Paint")
-			WarMenu.CreateSubMenu("secondary", theItem.id, "Secondary Paint")
+		if mod.id == "paint" then
+			LuxUI.CreateSubMenu("primary", mod.id, "Primary Paint")
+			LuxUI.CreateSubMenu("secondary", mod.id, "Secondary Paint")
 
-			WarMenu.CreateSubMenu("rimpaint", theItem.id, "Wheel Paint")
+			LuxUI.CreateSubMenu("rimpaint", mod.id, "Wheel Paint")
 
-			WarMenu.CreateSubMenu("classic1", "primary", "Classic Paint")
-			WarMenu.CreateSubMenu("metallic1", "primary", "Metallic Paint")
-			WarMenu.CreateSubMenu("matte1", "primary", "Matte Paint")
-			WarMenu.CreateSubMenu("metal1", "primary", "Metal Paint")
-			WarMenu.CreateSubMenu("classic2", "secondary", "Classic Paint")
-			WarMenu.CreateSubMenu("metallic2", "secondary", "Metallic Paint")
-			WarMenu.CreateSubMenu("matte2", "secondary", "Matte Paint")
-			WarMenu.CreateSubMenu("metal2", "secondary", "Metal Paint")
+			LuxUI.CreateSubMenu("classic1", "primary", "Classic Paint")
+			LuxUI.CreateSubMenu("metallic1", "primary", "Metallic Paint")
+			LuxUI.CreateSubMenu("matte1", "primary", "Matte Paint")
+			LuxUI.CreateSubMenu("metal1", "primary", "Metal Paint")
+			LuxUI.CreateSubMenu("classic2", "secondary", "Classic Paint")
+			LuxUI.CreateSubMenu("metallic2", "secondary", "Metallic Paint")
+			LuxUI.CreateSubMenu("matte2", "secondary", "Matte Paint")
+			LuxUI.CreateSubMenu("metal2", "secondary", "Metal Paint")
 
-			WarMenu.CreateSubMenu("classic3", "rimpaint", "Classic Paint")
-			WarMenu.CreateSubMenu("metallic3", "rimpaint", "Metallic Paint")
-			WarMenu.CreateSubMenu("matte3", "rimpaint", "Matte Paint")
-			WarMenu.CreateSubMenu("metal3", "rimpaint", "Metal Paint")
+			LuxUI.CreateSubMenu("classic3", "rimpaint", "Classic Paint")
+			LuxUI.CreateSubMenu("metallic3", "rimpaint", "Metallic Paint")
+			LuxUI.CreateSubMenu("matte3", "rimpaint", "Matte Paint")
+			LuxUI.CreateSubMenu("metal3", "rimpaint", "Metal Paint")
 
 		end
-	end
-
-	for i,theItem in pairs(LSC.perfMods) do
-		WarMenu.CreateSubMenu(theItem.id, 'performance', theItem.name)
 	end
 
 	local SelectedPlayer = nil
 	local SelectedResource = nil
-	
+
 	while isMenuEnabled do
 		ped = PlayerPedId()
-		veh = GetVehiclePedIsUsing(ped)
+		LUX.Player.Vehicle = GetVehiclePedIsUsing(ped)
 
-		if IsDisabledControlJustPressed(0, 121) then
+		if IsDisabledControlJustPressed(0, LUX.Keys["DELETE"]) then
 			--GateKeep()
-			WarMenu.OpenMenu("LuxMainMenu")
+			LuxUI.OpenMenu("LuxMainMenu")
 		end
 
-		if WarMenu.IsMenuOpened("LuxMainMenu") then
-			if WarMenu.MenuButton("Self Options", "SelfMenu") then end
-			if WarMenu.MenuButton("Online Options", "OnlinePlayersMenu") then end
-			if WarMenu.MenuButton("Visual Options", "VisualMenu") then end
-			if WarMenu.MenuButton("Teleport Options", "TeleportMenu") then end
-			if WarMenu.MenuButton("Vehicle Options", "LocalVehicleMenu") then end
-			if WarMenu.MenuButton("Weapon Options", "LocalWepMenu") then end
-			if WarMenu.MenuButton("Server Options", "ServerMenu") then end
-			if WarMenu.MenuButton("~r~Grief Menu", "LuxMainMenu") then end
-			if WarMenu.MenuButton("~b~Menu Settings", "MenuSettings") then end
+		if LuxUI.IsMenuOpened("LuxMainMenu") then
+			if LuxUI.MenuButton("Self Options", "SelfMenu") then end
+			if LuxUI.MenuButton("Online Options", "OnlinePlayersMenu") then end
+			if LuxUI.MenuButton("Visual Options", "VisualMenu") then end
+			if LuxUI.MenuButton("Teleport Options", "TeleportMenu") then end
+			if LuxUI.MenuButton("Vehicle Options", "LocalVehicleMenu") then end
+			if LuxUI.MenuButton("Weapon Options", "LocalWepMenu") then end
+			if LuxUI.MenuButton("Server Options", "ServerMenu") then end
+			if LuxUI.MenuButton("~r~Grief Menu", "LuxMainMenu") then end
+			if LuxUI.MenuButton("~b~Menu Settings", "MenuSettings") then end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("SelfMenu") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("SelfMenu") then
 
-			if WarMenu.Button("Max Health") then
+			if LuxUI.Button("Max Health") then
 				SetEntityHealth(PlayerPedId(), 200)
 			end
 			
-			if WarMenu.Button("Max Armour") then
+			if LuxUI.Button("Max Armour") then
 				SetPedArmour(PlayerPedId(), 200)
 			end
 
-			if WarMenu.Button("Suicide") then
+			if LuxUI.Button("Suicide") then
 				KillYourself()
 			end
 
-			if WarMenu.CheckBox("Infinite Stamina", InfStamina, function(enabled) InfStamina = enabled end) then
+			if LuxUI.CheckBox("Infinite Stamina", InfStamina, function(enabled) InfStamina = enabled end) then
 				
 			end
 
-			if WarMenu.CheckBox("No Ragdoll", RagdollToggle, function(enabled) RagdollToggle = enabled end) then end
+			if LuxUI.CheckBox("No Ragdoll", RagdollToggle, function(enabled) RagdollToggle = enabled end) then end
 			
-			if WarMenu.CheckBox("Godmode", Godmode, function(enabled) Godmode = enabled end) then
-
-			end
+			if LuxUI.Slider("Move Speed", FastCBWords, selFastRunIndex, function(selectedIndex)
+				if selFastRunIndex ~= selectedIndex then 
+					selFastRunIndex = selectedIndex
+				end
+			end) then end
 			
-			if WarMenu.CheckBox("Fast Run", fastrun, function(enabled) fastrun = enabled end) then
-			
-			end
-
-			if WarMenu.CheckBox("~r~Super Jump", SuperJump, function(enabled) SuperJump = enabled end) then
+			if LuxUI.CheckBox("~r~Godmode", Godmode, function(enabled) Godmode = enabled end) then
 
 			end
 
-			if WarMenu.CheckBox("~r~Invisible", Invisible, function(enabled) Invisible = enabled end) then
+			if LuxUI.CheckBox("~r~Super Jump", SuperJump, function(enabled) SuperJump = enabled end) then
 
 			end
 
-			if WarMenu.CheckBox("~r~Noclip", LUX.Player.isNoclipping, function(enabled) 
+			if LuxUI.CheckBox("~r~Invisible", Invisible, function(enabled) Invisible = enabled end) then
+
+			end
+
+			if LuxUI.CheckBox("~r~Noclip", LUX.Player.isNoclipping, function(enabled) 
 				LUX.Player.isNoclipping = enabled 
 				if LUX.Player.isNoclipping then
 					SetEntityVisible(PlayerPedId(), false, false)
@@ -3838,16 +4163,16 @@ local function MenuRuntimeThread()
 				end
 			end) then end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("TeleportMenu") then
-			if WarMenu.Button("Teleport to waypoint") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("TeleportMenu") then
+			if LuxUI.Button("Teleport to waypoint") then
 				TeleportToWaypoint()
 			 end
 	
-			 WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("VisualMenu") then
+			 LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("VisualMenu") then
 			-- if
-			-- 	WarMenu.CheckBox(
+			-- 	LuxUI.CheckBox(
 			-- 	"TriggerBot",
 			-- 	TriggerBot,
 			-- 	function(enabled)
@@ -3855,7 +4180,7 @@ local function MenuRuntimeThread()
 			-- 	end)
 			-- then
 			-- elseif
-			-- 	WarMenu.CheckBox(
+			-- 	LuxUI.CheckBox(
 			-- 	"AimBot",
 			-- 	AimBot,
 			-- 	function(enabled)
@@ -3863,17 +4188,17 @@ local function MenuRuntimeThread()
 			-- 	end)
 			-- then
 
-			if WarMenu.CheckBox("ESP", esp, function(enabled) esp = enabled end) then end
-			if WarMenu.CheckBox("Force Crosshair", Crosshair, function(enabled) Crosshair = enabled end) then end
-			if WarMenu.CheckBox("Force Minimap", showMinimap, function(enabled) showMinimap = enabled end) then end
-			if WarMenu.CheckBox("Force Player Blips", playerBlips, function(enabled) playerBlips = enabled end) then end
-			if WarMenu.CheckBox("Force Gamertags", showNametags, function(enabled) showNametags = enabled end) then end
+			if LuxUI.CheckBox("ESP", esp, function(enabled) esp = enabled end) then end
+			if LuxUI.CheckBox("Force Crosshair", Crosshair, function(enabled) Crosshair = enabled end) then end
+			if LuxUI.CheckBox("Force Minimap", showMinimap, function(enabled) showMinimap = enabled end) then end
+			if LuxUI.CheckBox("Force Player Blips", playerBlips, function(enabled) playerBlips = enabled end) then end
+			if LuxUI.CheckBox("Force Gamertags", showNametags, function(enabled) showNametags = enabled end) then end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("Griefer") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("Griefer") then
 			
 			if
-				WarMenu.CheckBox(
+				LuxUI.CheckBox(
 				"~r~Explode All",
 				blowall,
 				function(enabled)
@@ -3881,7 +4206,7 @@ local function MenuRuntimeThread()
 				end)
 			then
 			elseif
-				WarMenu.CheckBox(
+				LuxUI.CheckBox(
 				"~r~Overload Client Stream",
 				nuke,
 				function(enabled)
@@ -3889,7 +4214,7 @@ local function MenuRuntimeThread()
 				end)
 			then
 			elseif
-				WarMenu.CheckBox(
+				LuxUI.CheckBox(
 				"~r~Trigger Malicious ESX",
 				esxdestroy,
 				function(enabled)
@@ -3897,7 +4222,7 @@ local function MenuRuntimeThread()
 				end)
 			then
 			elseif
-				WarMenu.CheckBox(
+				LuxUI.CheckBox(
 				"~r~Crash Server/Clients",
 				servercrasher,
 				function(enabled)
@@ -3905,25 +4230,25 @@ local function MenuRuntimeThread()
 				end)
 			then
 			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalWepMenu") then
-			if WarMenu.MenuButton("Spawn Weapon", "LocalWepCategory") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalWepMenu") then
+			if LuxUI.MenuButton("Spawn Weapon", "LocalWepCategory") then
 			end
 
-			if WarMenu.Button("~g~Give All Weapons") then
+			if LuxUI.Button("~g~Give All Weapons") then
 				for hash, v in pairs(t_Weapons) do
 					PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 					GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 256, false, false)
 				end
 			end
 			
-			if WarMenu.Button("~r~Remove All Weapons") then
+			if LuxUI.Button("~r~Remove All Weapons") then
 				for hash, v in pairs(t_Weapons) do
 					RemoveWeaponFromPed(PlayerPedId(), GetHashKey(hash))
 				end
 			end
 
-			if WarMenu.Button("Remove all weapons from everyone") then
+			if LuxUI.Button("Remove all weapons from everyone") then
 				local plist = GetActivePlayers()
 				for i = 1, #plist do
 					local id = plist[i]
@@ -3933,114 +4258,114 @@ local function MenuRuntimeThread()
 				end
 			end
 
-			if WarMenu.Button("Set current weapon ammo") then
+			if LuxUI.Button("Set current weapon ammo") then
 				local _, weaponHash = GetCurrentPedWeapon(PlayerPedId())
 				local amount = KeyboardInput("Ammo amount", "", 3)
 				local ammo = floor(tonumber(amount) + 0.5)
 				SetPedAmmo(PlayerPedId(), weaponHash, ammo)
 			end
 
-			if WarMenu.CheckBox("Infinite Ammo", InfAmmo, function(enabled) InfAmmo = enabled SetPedInfiniteAmmoClip(PlayerPedId(), InfAmmo) end) then end	
-			if WarMenu.CheckBox("Vehicle Gun", VehicleGun, function(enabled) VehicleGun = enabled end) then end		
-			if WarMenu.CheckBox("Delete Gun", DeleteGun, function(enabled)DeleteGun = enabled end) then end
+			if LuxUI.CheckBox("Infinite Ammo", InfAmmo, function(enabled) InfAmmo = enabled SetPedInfiniteAmmoClip(PlayerPedId(), InfAmmo) end) then end	
+			if LuxUI.CheckBox("Vehicle Gun", VehicleGun, function(enabled) VehicleGun = enabled end) then end		
+			if LuxUI.CheckBox("Delete Gun", DeleteGun, function(enabled)DeleteGun = enabled end) then end
 
-			WarMenu.Display()
+			LuxUI.Display()
 			-- [NOTE] Local Weapon Menu
-		elseif WarMenu.IsMenuOpened("LocalWepCategory") then
-			WarMenu.MenuButton("Melee Weapons", "LocalMeleeWeapons")
-			WarMenu.MenuButton("Sidearms", "LocalSidearmWeapons")
-			WarMenu.MenuButton("Auto Rifles", "LocalAutorifleWeapons")
-			WarMenu.MenuButton("Shotguns", "LocalShotgunWeapons")
-			WarMenu.MenuButton("SMGs/LMGs", "LocalSmgWeapons")
+		elseif LuxUI.IsMenuOpened("LocalWepCategory") then
+			LuxUI.MenuButton("Melee Weapons", "LocalMeleeWeapons")
+			LuxUI.MenuButton("Sidearms", "LocalSidearmWeapons")
+			LuxUI.MenuButton("Auto Rifles", "LocalAutorifleWeapons")
+			LuxUI.MenuButton("Shotguns", "LocalShotgunWeapons")
+			LuxUI.MenuButton("SMGs/LMGs", "LocalSmgWeapons")
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalMeleeWeapons") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalMeleeWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_me" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 0, false, false)
 					end
 				end
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalSidearmWeapons") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalSidearmWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_hg" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 32, false, false)
 					end
 				end
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalAutorifleWeapons") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalAutorifleWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_ar" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 60, false, false)
 					end
 				end
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalShotgunWeapons") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalShotgunWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_sg" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 18, false, false)
 					end
 				end
 			end
 
-			WarMenu.Display()	
-		elseif WarMenu.IsMenuOpened("LocalSmgWeapons") then
+			LuxUI.Display()	
+		elseif LuxUI.IsMenuOpened("LocalSmgWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_sb" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						PlaySoundFrontend(-1, "PICK_UP", "HUD_FRONTEND_DEFAULT_SOUNDSET", true)
 						GiveWeaponToPed(PlayerPedId(), GetHashKey(hash), 60, false, false)
 					end
 				end
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalVehicleMenu") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalVehicleMenu") then
 
-			if WarMenu.MenuButton("Vehicle Spawner", "LocalVehicleSpawner") then
+			if LuxUI.MenuButton("Vehicle Spawner", "LocalVehicleSpawner") then
 			end
-			if WarMenu.Button("Repair Vehicle") then
+			if LuxUI.Button("Repair Vehicle") then
 				local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
 				SetVehicleFixed(vehicle)
 				SetVehicleLights(vehicle, 0)
 				SetVehicleBurnout(vehicle, false)
 				SetVehicleLightsMode(vehicle, 0)
 			end
-			if WarMenu.Button("Delete Vehicle") then
+			if LuxUI.Button("Delete Vehicle") then
 				if LUX.Player.inVehicle then
 					DelVeh(GetVehiclePedIsUsing(PlayerPedId()))
 				else
-					drawNotification({text = "You must be in a vehicle", type = "error"})
+					LuxUI.SendNotification({text = "You must be in a vehicle", type = "error"})
 				end
 			end
-			if WarMenu.Button("ESX Give Ownership") then
+			if LuxUI.Button("ESX Give Ownership") then
 				if LUX.Player.inVehicle then
 					local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
 					SetVehicleNumberPlateText(vehicle, exports.esx_vehicleshop:GeneratePlate())
-					local vehicleProps = ESX.Game.GetVehicleProperties(vehicle)
+					local vehicleProps = LUX.Game.GetVehicleProperties(vehicle)
 					TriggerServerEvent('esx_vehicleshop:setVehicleOwned', vehicleProps)
 					--TriggerServerEvent('esx_givecarkeys:setVehicleOwned', vehicleProps)
 				else
-					drawNotification({text = "You must be in a vehicle", type = "error"})
+					LuxUI.SendNotification({text = "You must be in a vehicle", type = "error"})
 				end
 			end
-			if WarMenu.Button("ESX Sell Vehicle") then
+			if LuxUI.Button("ESX Sell Vehicle") then
 				local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
-				local vehicleProps = ESX.Game.GetVehicleProperties(vehicle)
+				local vehicleProps = LUX.Game.GetVehicleProperties(vehicle)
 				ESX.TriggerServerCallback('esx_vehicleshop:resellVehicle', function(vehicleSold)
 
 					if vehicleSold then
@@ -4052,23 +4377,22 @@ local function MenuRuntimeThread()
 
 				end, vehicleProps.plate, vehicleProps.model)
 			end
-			if WarMenu.MenuButton("LS Customs", "LSC") then 
-			end
-			if WarMenu.Button("Flip Vehicle") then
+			if LuxUI.MenuButton("LS Customs", "LSC") then end
+			if LuxUI.Button("Flip Vehicle") then
 				local playerPed = PlayerPedId()
 				local playerVeh = GetVehiclePedIsIn(playerPed, true)
 				if IsPedInAnyVehicle(PlayerPedId(), 0) then
 					if (GetPedInVehicleSeat(GetVehiclePedIsIn(PlayerPedId(), 0), -1) == PlayerPedId()) then
 						SetVehicleOnGroundProperly(playerVeh)
-						--drawNotification({text = "Your vehicle was flipped", type = 'success'})
+						--LuxUI.SendNotification({text = "Your vehicle was flipped", type = 'success'})
 					else
-						drawNotification({text = "You must be the driver of the vehicle", type = 'error'})
+						LuxUI.SendNotification({text = "You must be the driver of the vehicle", type = 'error'})
 					end
 				else
-					drawNotification({text = "You must be in a vehicle to flip", type = 'error'})
+					LuxUI.SendNotification({text = "You must be in a vehicle to flip", type = 'error'})
 				end
 			end
-			if WarMenu.Button("Change License Plate") then
+			if LuxUI.Button("Change License Plate") then
 				local playerPed = PlayerPedId()
 				local playerVeh = GetVehiclePedIsIn(playerPed, true)
 				local result = KeyboardInput("Enter new plate text", "", 8)
@@ -4076,45 +4400,45 @@ local function MenuRuntimeThread()
 					SetVehicleNumberPlateText(playerVeh, result)
 				end
 			end
-			if WarMenu.Button("Max Tuning") then
+			if LuxUI.Button("Max Tuning") then
 				Vehicle.MaxTuning(GetVehiclePedIsUsing(PlayerPedId()))
 			end
-			if WarMenu.CheckBox("Rainbow Vehicle Colour", RainbowVeh, function(enabled) RainbowVeh = enabled end) then 
+			if LuxUI.CheckBox("Rainbow Vehicle Colour", RainbowVeh, function(enabled) RainbowVeh = enabled end) then 
 			end
-			if WarMenu.CheckBox("Ghetto Police Car", ghettopolice, function(enabled) ghettopolice = enabled end) then
+			if LuxUI.CheckBox("Ghetto Police Car", ghettopolice, function(enabled) ghettopolice = enabled end) then
 			end
-			if WarMenu.Button("Make vehicle dirty") then
+			if LuxUI.Button("Make vehicle dirty") then
 				SetVehicleDirtLevel(GetVehiclePedIsIn(PlayerPedId(), false), 0.0)
 				Clean(GetVehiclePedIsUsing(PlayerPedId()))
-				drawNotification("Vehicle is now dirty")
+				LuxUI.SendNotification("Vehicle is now dirty")
 			end
-			if WarMenu.Button("Make vehicle clean") then
+			if LuxUI.Button("Make vehicle clean") then
 				Clean2(GetVehiclePedIsUsing(PlayerPedId()))
-				drawNotification("Vehicle is now clean")
+				LuxUI.SendNotification("Vehicle is now clean")
 			end
-			if WarMenu.CheckBox("Seatbelt", Seatbelt, 
+			if LuxUI.CheckBox("Seatbelt", Seatbelt, 
 					function(enabled) 
 						Seatbelt = enabled 
 						SetPedCanBeKnockedOffVehicle(PlayerPedId(), Seatbelt) 
 					end) 
 				then
 			end
-			if WarMenu.CheckBox("Vehicle Godmode", VehGod,
+			if LuxUI.CheckBox("Vehicle Godmode", VehGod,
 					function(enabled)
 						VehGod = enabled
 					end) 
 				then
 			end
-			if WarMenu.CheckBox("Speedboost ~g~SHIFT ~r~CTRL", VehSpeed,
+			if LuxUI.CheckBox("Speedboost ~g~SHIFT ~r~CTRL", VehSpeed,
 					function(enabled)
 					VehSpeed = enabled
 					end)
 				then
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LocalVehicleSpawner") then
-			if WarMenu.Button("Spawn Vehicle by Hash") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LocalVehicleSpawner") then
+			if LuxUI.Button("Spawn Vehicle by Hash") then
 				local modelName = KeyboardInput("Enter vehicle spawn name", "", 12)
 				if not modelName then -- Do nothing in case of accidentel press or change of mind
 				elseif IsModelValid(modelName) and IsModelAVehicle(modelName) then
@@ -4132,721 +4456,267 @@ local function MenuRuntimeThread()
 
 					SetModelAsNoLongerNeeded(modelName)
 				else
-					drawNotification({text = string.format("~o~%s ~s~is not a valid vehicle", modelName), type = 'error'})
+					LuxUI.SendNotification({text = string.format("~o~%s ~s~is not a valid vehicle", modelName), type = 'error'})
 				end
 			end
-			if WarMenu.MenuButton("Compacts", "localcompacts") then end
-			if WarMenu.MenuButton("Sedans", "localsedans") then end
-			if WarMenu.MenuButton("SUVs", "localsuvs") then end
-			if WarMenu.MenuButton("Coupes", 'localcoupes') then end
-			if WarMenu.MenuButton("Muscle", 'localmuscle') then end
-			if WarMenu.MenuButton("Sports Classics", 'localsportsclassics') then end
-			if WarMenu.MenuButton("Sports", 'localsports') then end
-			if WarMenu.MenuButton("Super", 'localsuper') then end
-			if WarMenu.MenuButton('Motorcycles', 'localmotorcycles') then end
-			if WarMenu.MenuButton('Off-Road', 'localoffroad') then end
-			if WarMenu.MenuButton('Industrial', 'localindustrial') then end
-			if WarMenu.MenuButton('Utility', 'localutility') then end
-			if WarMenu.MenuButton('Vans', 'localvans') then end
-			if WarMenu.MenuButton('Cycles', 'localcycles') then end
-			if WarMenu.MenuButton('Boats', 'localboats') then end
-			if WarMenu.MenuButton('Helicopters', 'localhelicopters') then end
-			if WarMenu.MenuButton('Planes', 'localplanes') then end
-			if WarMenu.MenuButton('Service/Emergency/Military', 'localservice') then end
-			if WarMenu.MenuButton('Commercial/Trains', 'localcommercial') then end
-			WarMenu.DrawVehiclePreview("yeet")
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened('localcompacts') then
+			if LuxUI.MenuButton("Compacts", "localcompacts") then end
+			if LuxUI.MenuButton("Sedans", "localsedans") then end
+			if LuxUI.MenuButton("SUVs", "localsuvs") then end
+			if LuxUI.MenuButton("Coupes", 'localcoupes') then end
+			if LuxUI.MenuButton("Muscle", 'localmuscle') then end
+			if LuxUI.MenuButton("Sports Classics", 'localsportsclassics') then end
+			if LuxUI.MenuButton("Sports", 'localsports') then end
+			if LuxUI.MenuButton("Super", 'localsuper') then end
+			if LuxUI.MenuButton('Motorcycles', 'localmotorcycles') then end
+			if LuxUI.MenuButton('Off-Road', 'localoffroad') then end
+			if LuxUI.MenuButton('Industrial', 'localindustrial') then end
+			if LuxUI.MenuButton('Utility', 'localutility') then end
+			if LuxUI.MenuButton('Vans', 'localvans') then end
+			if LuxUI.MenuButton('Cycles', 'localcycles') then end
+			if LuxUI.MenuButton('Boats', 'localboats') then end
+			if LuxUI.MenuButton('Helicopters', 'localhelicopters') then end
+			if LuxUI.MenuButton('Planes', 'localplanes') then end
+			if LuxUI.MenuButton('Service/Emergency/Military', 'localservice') then end
+			if LuxUI.MenuButton('Commercial/Trains', 'localcommercial') then end
+			--LuxUI.DrawVehiclePreview()
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localcompacts') then
 			for i = 1, #VehicleClass.compacts do
 				local modelName = VehicleClass.compacts[i][1]
 				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
 
-				if WarMenu.Button(vehname) then
+				if LuxUI.Button(vehname) then
 					SpawnLocalVehicle(modelName)
 				end
 			end
 
-			WarMenu.DrawVehiclePreview('compacts')
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("tunings") then
-			for i, theItem in pairs(LSC.vehicleMods) do
-				if theItem.id == "extra" and #LSC:CheckValidVehicleExtras() ~= 0 then
-					if WarMenu.MenuButton(theItem.name, theItem.id) then
-					end
-				elseif theItem.id == "neon" then
-					if WarMenu.MenuButton(theItem.name, theItem.id) then
-					end
-				elseif theItem.id == "paint" then
-					if WarMenu.MenuButton(theItem.name, theItem.id) then
-					end
-				elseif theItem.id == "wheeltypes" then
-					if WarMenu.MenuButton(theItem.name, theItem.id) then
-					end
-				else
-					local valid = LSC:CheckValidVehicleMods(theItem.id)
-					for ci,ctheItem in pairs(valid) do
-						if WarMenu.MenuButton(ctheItem.name, ctheItem.id) then
-						end
-						break
-					end
-				end
-
-			end
-			if IsToggleModOn(veh, 22) then
-				xenonStatus = "~g~Installed"
-			else
-				xenonStatus = "Not Installed"
-			end
-			if WarMenu.Button("Xenon Headlights", xenonStatus) then
-				if not IsToggleModOn(veh,22) then
-					payed = true
-					if payed then
-						ToggleVehicleMod(veh, 22, not IsToggleModOn(veh,22))
-					end
-				else
-					ToggleVehicleMod(veh, 22, not IsToggleModOn(veh,22))
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("performance") then
-			for i,theItem in pairs(LSC.perfMods) do
-				if WarMenu.MenuButton(theItem.name, theItem.id) then
-				end
-			end
-			if IsToggleModOn(veh,18) then
-				turboStatus = "~g~Installed"
-			else
-				turboStatus = "Not Installed"
-			end
-			if WarMenu.Button("Turbo Tune", turboStatus) then
-				if not IsToggleModOn(veh,18) then
-					payed = true
-					if payed then
-						ToggleVehicleMod(veh, 18, not IsToggleModOn(veh,18))
-					end
-				else
-					ToggleVehicleMod(veh, 18, not IsToggleModOn(veh,18))
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("primary") then
-			if WarMenu.MenuButton("Classic", "classic1") then
-			elseif WarMenu.MenuButton("Metallic", "metallic1") then
-			elseif WarMenu.MenuButton("Matte", "matte1") then
-			elseif WarMenu.MenuButton("Metal", "metal1") then
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("secondary") then
-			WarMenu.MenuButton("Classic", "classic2")
-			WarMenu.MenuButton("Metallic", "metallic2")
-			WarMenu.MenuButton("Matte", "matte2")
-			WarMenu.MenuButton("Metal", "metal2")
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("rimpaint") then
-			WarMenu.MenuButton("Classic", "classic3")
-			WarMenu.MenuButton("Metallic", "metallic3")
-			WarMenu.MenuButton("Matte", "matte3")
-			WarMenu.MenuButton("Metal", "metal3")
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("classic1") then
-			for theName, thePaint in pairs(LSC.paintsClassic) do
-				tmpPrimary, tmpSecondary = GetVehicleColours(veh)
-				if tmpPrimary == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and tmpPrimary == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim, cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl, oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleColours(veh, thePaint.id, oldsec)
-						SetVehicleExtraColours(veh, thePaint.id, oldwheelcolour)
-
-						isPreviewing = true
-					elseif isPreviewing and curprim == thePaint.id then
-						SetVehicleColours(veh, thePaint.id, oldsec)
-						SetVehicleExtraColours(veh, thePaint.id, oldwheelcolour)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and curprim ~= thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = true
-					end
-				end
-			end
-
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metallic1") then
-			for theName,thePaint in pairs(LSC.paintsClassic) do
-				tp,ts = GetVehicleColours(veh)
-				if tp == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and tp == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-
-						isPreviewing = true
-					elseif isPreviewing and curprim == thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and curprim ~= thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("matte1") then
-			for theName,thePaint in pairs(LSC.paintsMatte) do
-				tp,ts = GetVehicleColours(veh)
-				if tp == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and tp == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleColours(veh,thePaint.id,oldsec)
-
-						isPreviewing = true
-					elseif isPreviewing and curprim == thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and curprim ~= thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metal1") then
-			for theName,thePaint in pairs(LSC.paintsMetal) do
-				tp,ts = GetVehicleColours(veh)
-				if tp == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and tp == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						SetVehicleColours(veh,thePaint.id,oldsec)
-
-						isPreviewing = true
-					elseif isPreviewing and curprim == thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and curprim ~= thePaint.id then
-						SetVehicleColours(veh,thePaint.id,oldsec)
-						SetVehicleExtraColours(veh, thePaint.id,oldwheelcolour)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("classic2") then
-			for theName,thePaint in pairs(LSC.paintsClassic) do
-				tp,ts = GetVehicleColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldmod = table.pack(oldprim,oldsec)
-						SetVehicleColours(veh,oldprim,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and cursec == thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and cursec ~= thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metallic2") then
-			for theName,thePaint in pairs(LSC.paintsClassic) do
-				tp,ts = GetVehicleColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldmod = table.pack(oldprim,oldsec)
-						SetVehicleColours(veh,oldprim,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and cursec == thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and cursec ~= thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("matte2") then
-			for theName,thePaint in pairs(LSC.paintsMatte) do
-				tp,ts = GetVehicleColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldmod = table.pack(oldprim,oldsec)
-						SetVehicleColours(veh,oldprim,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and cursec == thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and cursec ~= thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metal2") then
-			for theName,thePaint in pairs(LSC.paintsMetal) do
-				tp,ts = GetVehicleColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				curprim,cursec = GetVehicleColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldmod = table.pack(oldprim,oldsec)
-						SetVehicleColours(veh,oldprim,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and cursec == thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and cursec ~= thePaint.id then
-						SetVehicleColours(veh,oldprim,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("classic3") then
-			for theName,thePaint in pairs(LSC.paintsClassic) do
-				_,ts = GetVehicleExtraColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				_,currims = GetVehicleExtraColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and currims == thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and currims ~= thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metallic3") then
-			for theName,thePaint in pairs(LSC.paintsClassic) do
-				_,ts = GetVehicleExtraColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				_,currims = GetVehicleExtraColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and currims == thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and currims ~= thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("matte3") then
-			for theName,thePaint in pairs(LSC.paintsMatte) do
-				_,ts = GetVehicleExtraColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				_,currims = GetVehicleExtraColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and currims == thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and currims ~= thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("metal3") then
-			for theName,thePaint in pairs(LSC.paintsMetal) do
-				_,ts = GetVehicleExtraColours(veh)
-				if ts == thePaint.id and not isPreviewing then
-					pricetext = "~g~Installed"
-				else
-					if isPreviewing and ts == thePaint.id then
-						pricetext = "~y~Previewing"
-					else
-						pricetext = "Not Installed"
-					end
-				end
-				_,currims = GetVehicleExtraColours(veh)
-				if WarMenu.Button(thePaint.name, pricetext) then
-					if not isPreviewing then
-						oldmodtype = "paint"
-						oldmodaction = false
-						oldprim,oldsec = GetVehicleColours(veh)
-						oldpearl,oldwheelcolour = GetVehicleExtraColours(veh)
-						oldmod = table.pack(oldprim,oldsec,oldpearl,oldwheelcolour)
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-
-						isPreviewing = true
-					elseif isPreviewing and currims == thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = false
-						oldmodtype = -1
-						oldmod = -1
-					elseif isPreviewing and currims ~= thePaint.id then
-						SetVehicleExtraColours(veh, oldpearl,thePaint.id)
-						isPreviewing = true
-					end
-				end
-			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("LSC") then
+			LuxUI.DrawVehiclePreview('compacts')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("LSC") then
 			if LUX.Player.inVehicle then
-				if WarMenu.MenuButton("Visual Tuning", "tunings") then
-				elseif WarMenu.MenuButton("Performance Tuning", "performance") then
+				if LuxUI.MenuButton("Bodywork", "lsc_bodywork") then
+					LSC.UpdateMods()
+				end
+				if LuxUI.MenuButton("Performance Tuning", "lsc_performance") then
+					LSC.UpdateMods()
 				end
 			else
-				if WarMenu.Button("No vehicle found") then
+				if LuxUI.Button("No vehicle found") then
 				end
 			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("ServerMenu") then
-			if WarMenu.MenuButton("Resource List", "ServerResources") then end
-			if WarMenu.MenuButton("ESX Boss Options", "ESXBoss") then end
-			if WarMenu.MenuButton("ESX Money Options", "ESXMoney") then end
-			if WarMenu.MenuButton("ESX Misc Options", "ESXMisc") then end
-			if WarMenu.MenuButton("ESX Drug Options", "ESXDrugs") then end
-			if WarMenu.MenuButton("VRP Options", "VRPOptions") then end
-			if WarMenu.MenuButton("Misc Options", "MiscServerOptions") then end
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("lsc_bodywork") then
+			local installed = currentMods
+			if LUX.Player.inVehicle then
+				for i, type in pairs(LSC.vehicleMods) do
+					SetVehicleModKit(LUX.Player.Vehicle, 0)
+					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, type.id)
+					if modCount > 0 then
+						if type.meta == "modFrontWheels" or type.meta == "modBackWheels" then
+							if LuxUI.ComboBox(type.name, LSC.WheelType, installed['wheels'], function(selectedIndex, selectedItem)
+								selectedIndex = selectedIndex - 1
+								installed['wheels'] = selectedIndex
+								SetVehicleWheelType(LUX.Player.Vehicle, selectedIndex)
+								LuxUI.SetSubTitle(type.meta, selectedItem .. " Wheels")
+							end, true) then
+								if modCount > 0 then
+									setMenuVisible(type.meta, true)
+								end
+							end
+						else
+							if LuxUI.MenuButton(type.name, type.meta) then end
+						end
+					end
+				end
+			else
+				if LuxUI.Button("No vehicle found") then
+				end
+			end
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("lsc_performance") then
+			local installed = currentMods
+			if LUX.Player.inVehicle then
+				SetVehicleModKit(LUX.Player.Vehicle, 0)
+				for i, type in pairs(LSC.perfMods) do
+					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, type.id)
+					if modCount > 0 then
+						if LuxUI.Slider(type.name, VehicleUpgradeWords[modCount], installed[type.meta], function(selectedIndex)
+							selectedIndex = selectedIndex - 2
+							installed[type.meta] = selectedIndex
+							SetVehicleMod(LUX.Player.Vehicle, type.id, selectedIndex, false)
+						end, true) then end
+					end
+				end
 
-			WarMenu.Display()
+				if LuxUI.CheckBox("Turbo", installed['modTurbo'], function(enabled)
+					installed['modTurbo'] = enabled
+					ToggleVehicleMod(LUX.Player.Vehicle, 18, enabled)
+				end) then end
+			else
+				if LuxUI.Button("No vehicle found") then
+				end
+			end
+
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("ServerMenu") then
+			if LuxUI.MenuButton("Resource List", "ServerResources") then end
+			if LuxUI.MenuButton("ESX Boss Options", "ESXBoss") then end
+			if LuxUI.MenuButton("ESX Money Options", "ESXMoney") then end
+			if LuxUI.MenuButton("ESX Misc Options", "ESXMisc") then end
+			if LuxUI.MenuButton("ESX Drug Options", "ESXDrugs") then end
+			if LuxUI.MenuButton("VRP Options", "VRPOptions") then end
+			if LuxUI.MenuButton("Misc Options", "MiscServerOptions") then end
+
+			LuxUI.Display()
 			
-		elseif WarMenu.IsMenuOpened("MenuSettings") then
-			if WarMenu.MenuButton("Change Color Theme", "MenuSettingsColor") then
+		elseif LuxUI.IsMenuOpened("MenuSettings") then
+			if LuxUI.MenuButton("Change Color Theme", "MenuSettingsColor") then
 			end
-			if WarMenu.MenuButton("Credits", "MenuSettingsCredits") then
+			if LuxUI.MenuButton("Credits", "MenuSettingsCredits") then
 			end
-			if WarMenu.Button("~r~Kill Menu") then
+			if LuxUI.Button("~r~Kill Menu") then
 				isMenuEnabled = false
 			end
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("MenuSettingsColor") then
-			if WarMenu.Button("Red", nil, themeColors.red) then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("MenuSettingsColor") then
+			if LuxUI.CheckBox("Dynamic Theme", dynamicColorTheme, function(enabled) dynamicColorTheme = enabled end) then
+			end
+			if LuxUI.Button("Red", nil, themeColors.red) then
 				_menuColor.base = themeColors.red
 			end
-			if WarMenu.Button("Orange", nil, themeColors.orange) then
+			if LuxUI.Button("Orange", nil, themeColors.orange) then
 				_menuColor.base = themeColors.orange
 			end
-			if WarMenu.Button("Yellow", nil, themeColors.yellow) then
+			if LuxUI.Button("Yellow", nil, themeColors.yellow) then
 				_menuColor.base = themeColors.yellow
 			end
-			if WarMenu.Button("Green", nil, themeColors.green) then
+			if LuxUI.Button("Green", nil, themeColors.green) then
 				_menuColor.base = themeColors.green
 			end
-			if WarMenu.Button("Blue", nil, themeColors.blue) then
+			if LuxUI.Button("Blue", nil, themeColors.blue) then
 				_menuColor.base = themeColors.blue
 			end
-			if WarMenu.Button("Purple", nil, themeColors.purple) then
+			if LuxUI.Button("Purple", nil, themeColors.purple) then
 				_menuColor.base = themeColors.purple
 			end
-			if WarMenu.Button("White", nil, themeColors.white) then
-				_menuColor.base = themeColors.white
-			end
 
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("MenuSettingsCredits") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("MenuSettingsCredits") then
 			for _, v in pairs(contributors) do 
-				if WarMenu.Button(v[1], v[2]) then end 
+				if LuxUI.Button(v[1], v[2]) then end 
 			end
 			
-			WarMenu.Display()
-		elseif WarMenu.IsMenuOpened("ServerResources") then
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened("ServerResources") then
 			for _, resource in pairs(validResources) do
-				if WarMenu.MenuButton(resource, 'ResourceData') then
+				if LuxUI.MenuButton(resource, 'ResourceData') then
 					SelectedResource = resource
 				end
 			end
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened('ResourceData') then
-			WarMenu.SetSubTitle('ResourceData', SelectedResource .. " > Data")
-			if WarMenu.MenuButton('Event Handlers', 'ResourceCEvents') then end
-			if WarMenu.MenuButton('Server Events', 'ResourceSEvents') then end
-			WarMenu.Display()
+		elseif LuxUI.IsMenuOpened('ResourceData') then
+			LuxUI.SetSubTitle('ResourceData', SelectedResource .. " > Data")
+			if LuxUI.MenuButton('Event Handlers', 'ResourceCEvents') then end
+			--if LuxUI.MenuButton('Server Events', 'ResourceSEvents') then end
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened('ResourceCEvents') then
-			WarMenu.SetSubTitle('ResourceCEvents', SelectedResource .. " > Data > Event Handlers")
+		elseif LuxUI.IsMenuOpened('ResourceCEvents') then
+			LuxUI.SetSubTitle('ResourceCEvents', SelectedResource .. " > Data > Event Handlers")
 			for key, name in pairs(validResourceEvents[SelectedResource]) do
-				if WarMenu.Button(name) then
+				if LuxUI.Button(name) then
 					print(key)
 				end
 			end
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened('ResourceSEvents') then
-			WarMenu.SetSubTitle('ResourceSEvents', SelectedResource .. " > Data > Server Events")
+		elseif LuxUI.IsMenuOpened('ResourceSEvents') then
+			LuxUI.SetSubTitle('ResourceSEvents', SelectedResource .. " > Data > Server Events")
 			for name, payload in pairs(validResourceServerEvents[SelectedResource]) do
-				if WarMenu.Button(name) then
+				if LuxUI.Button(name) then
 					print(payload)
 				end
 			end
 		
-		elseif WarMenu.IsMenuOpened("ESXBoss") then
+		elseif LuxUI.IsMenuOpened("ESXBoss") then
 
-			if WarMenu.Button("~c~Mechanic~s~ Boss Menu") then
+			if LuxUI.Button("~c~Mechanic~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","mecano",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~b~Police~s~ Boss Menu") then
+			elseif LuxUI.Button("~b~Police~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","police",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~r~Ambulance~s~ Boss Menu") then
+			elseif LuxUI.Button("~r~Ambulance~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","ambulance",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~y~Taxi~s~ Boss Menu") then
+			elseif LuxUI.Button("~y~Taxi~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","taxi",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~g~Real Estate~s~ Boss Menu") then
+			elseif LuxUI.Button("~g~Real Estate~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","realestateagent",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~p~Gang~s~ Boss Menu") then
+			elseif LuxUI.Button("~p~Gang~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","gang",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~o~Car Dealer~s~ Boss Menu") then
+			elseif LuxUI.Button("~o~Car Dealer~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","cardealer",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
-			elseif WarMenu.Button("~y~Banker~s~ Boss Menu") then
+			elseif LuxUI.Button("~y~Banker~s~ Boss Menu") then
 				TriggerEvent("esx_society:openBossMenu","banker",function(data, menu)menu.close() end)
 				setMenuVisible(currentMenu, false)
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("ESXMoney") then
+		elseif LuxUI.IsMenuOpened("ESXMoney") then
 
-			if WarMenu.Button("~g~ESX ~y~Caution Give Back") then
+			if LuxUI.Button("~g~ESX ~y~Caution Give Back") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent('esx_jobs:caution', 'give_back', result, 0, 0)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~TruckerJob Pay") then
+			elseif LuxUI.Button("~g~ESX ~y~TruckerJob Pay") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent('esx_truckerjob:pay', result)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~Admin Give Bank") then
+			elseif LuxUI.Button("~g~ESX ~y~Admin Give Bank") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent('AdminMenu:giveBank', result)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~Admin Give Cash") then
+			elseif LuxUI.Button("~g~ESX ~y~Admin Give Cash") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent('AdminMenu:giveCash', result)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~GOPostalJob Pay") then
+			elseif LuxUI.Button("~g~ESX ~y~GOPostalJob Pay") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent("esx_gopostaljob:pay", result)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~BankerJob Pay") then
+			elseif LuxUI.Button("~g~ESX ~y~BankerJob Pay") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent("esx_banksecurity:pay", result)
 				end
-			elseif WarMenu.Button("~g~ESX ~y~Slot Machine") then
+			elseif LuxUI.Button("~g~ESX ~y~Slot Machine") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100000000)
 				if result then
 					TriggerServerEvent("esx_slotmachine:sv:2", result)
 				end
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("ESXMisc") then
+		elseif LuxUI.IsMenuOpened("ESXMisc") then
 
-			if WarMenu.Button("~w~Set hunger to ~g~100%") then
+			if LuxUI.Button("~w~Set hunger to ~g~100%") then
 				TriggerEvent("esx_status:set", "hunger", 1000000)
-			elseif WarMenu.Button("~w~Set thirst to ~g~100%") then
+			elseif LuxUI.Button("~w~Set thirst to ~g~100%") then
 				TriggerEvent("esx_status:set", "thirst", 1000000)
-			elseif WarMenu.Button("~g~ESX ~y~Revive ID") then
+			elseif LuxUI.Button("~g~ESX ~y~Revive ID") then
 				local id = KeyboardInput("Enter Player ID", "", 1000)
 				if id then
 					TriggerServerEvent("esx_ambulancejob:revive", GetPlayerServerId(id))
@@ -4854,7 +4724,7 @@ local function MenuRuntimeThread()
 					TriggerServerEvent("paramedic:revive", GetPlayerServerId(id))
 					TriggerServerEvent("ems:revive", GetPlayerServerId(id))
 				end
-			elseif WarMenu.Button("~g~ESX ~r~SEND EVERYONE A BILL") then
+			elseif LuxUI.Button("~g~ESX ~r~SEND EVERYONE A BILL") then
 				local amount = KeyboardInput("Enter Amount", "", 100000000)
 				  local name = KeyboardInput("Enter the name of the Bill", "", 100000000)
 				  if amount and name then
@@ -4862,27 +4732,27 @@ local function MenuRuntimeThread()
 						  TriggerServerEvent('esx_billing:sendBill', GetPlayerServerId(i), "Purposeless", name, amount)
 					end
 				end
-			elseif WarMenu.Button("~g~ESX ~b~Handcuff ID") then
+			elseif LuxUI.Button("~g~ESX ~b~Handcuff ID") then
 				local id = KeyboardInput("Enter Player ID", "", 3)
 				if id then
 					TriggerServerEvent('esx_policejob:handcuff', GetPlayerServerId(id))
 				end
-			elseif WarMenu.Button("~g~ESX ~w~Get all licenses") then
+			elseif LuxUI.Button("~g~ESX ~w~Get all licenses") then
 				TriggerServerEvent('esx_dmvschool:addLicense', dmv)
 				TriggerServerEvent('esx_dmvschool:addLicense', drive)
 				TriggerServerEvent('esx_dmvschool:addLicense', drive_bike)
 				TriggerServerEvent('esx_dmvschool:addLicense', drive_truck)
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("MiscServerOptions") then
+		elseif LuxUI.IsMenuOpened("MiscServerOptions") then
 
-			if WarMenu.Button("Send Discord Message") then
+			if LuxUI.Button("Send Discord Message") then
 				local Message = KeyboardInput("Enter message to send", "", 100)
 				TriggerServerEvent("DiscordBot:playerDied", Message, "1337")
-				drawNotification({text = "Sent message:~n~" .. Message .. "", type = "success"})
-			elseif WarMenu.Button("Trigger Event") then
+				LuxUI.SendNotification({text = "Sent message:~n~" .. Message .. "", type = "success"})
+			elseif LuxUI.Button("Trigger Event") then
 				local _eventType = KeyboardInput("Enter event type (Client/Server)", "", 10)
 				local eventType = string.lower(_eventType)
 
@@ -4893,19 +4763,19 @@ local function MenuRuntimeThread()
 				elseif eventType == "server" then
 					TriggerServerEvent(eventName, eventArg)
 				end
-			elseif WarMenu.Button("Send ambulance alert on waypoint") then
+			elseif LuxUI.Button("Send ambulance alert on waypoint") then
 				local playerPed = PlayerPedId()
 				if DoesBlipExist(GetFirstBlipInfoId(8)) then
 					local blipIterator = GetBlipInfoIdIterator(8)
 					local blip = GetFirstBlipInfoId(8, blipIterator)
 					WaypointCoords = Citizen.InvokeNative(0xFA7C7F0AADF25D09, blip, Citizen.ResultAsVector()) --Thanks To Briglair [forum.FiveM.net]
 					TriggerServerEvent('esx_addons_gcphone:startCall', 'ambulance', "medical attention required: unconscious citizen!", WaypointCoords)
-					drawNotification("~g~Ambulance alert sent to waypoint!")
+					LuxUI.SendNotification("~g~Ambulance alert sent to waypoint!")
 				else
-					drawNotification("~r~No waypoint set!")
+					LuxUI.SendNotification("~r~No waypoint set!")
 				end
 
-			elseif WarMenu.Button("~g~gcPhone ~w~Spoof message") then
+			elseif LuxUI.Button("~g~gcPhone ~w~Spoof message") then
 				local transmitter = KeyboardInput("Enter transmitting phone number", "", 10)
 				local receiver = KeyboardInput("Enter receiving phone number", "", 10)
 				local message = KeyboardInput("Enter message to send", "", 100)
@@ -4914,89 +4784,89 @@ local function MenuRuntimeThread()
 						if message then
 							TriggerServerEvent('gcPhone:_internalAddMessage', transmitter, receiver, message, 0)
 						else
-							drawNotification("~r~You must specify a message.")
+							LuxUI.SendNotification("~r~You must specify a message.")
 						end
 					else
-						drawNotification("~r~You must specify a receiving number.")
+						LuxUI.SendNotification("~r~You must specify a receiving number.")
 					end
 				else
-					drawNotification("~r~You must specify a transmitting number.")
+					LuxUI.SendNotification("~r~You must specify a transmitting number.")
 				end
-			elseif WarMenu.Button("Spoof Chat Message") then
+			elseif LuxUI.Button("Spoof Chat Message") then
 				local name = KeyboardInput("Enter chat sender name", "", 15)
 				local message = KeyboardInput("Enter your message to send", "", 70)
 				if name and message then
 					TriggerEvent('chat:addMessage', -1, { args = { name, message }, color = { 255, 255, 255 } })
 				end
-			elseif WarMenu.Button("~g~MUG ~w~Give item") then
+			elseif LuxUI.Button("~g~MUG ~w~Give item") then
 				local itemName = KeyboardInput("Enter item name", "", 20)
 				if itemName then
 					TriggerServerEvent('esx_mugging:giveItems', (itemName))
-					drawNotification("Successfully given item ~g~" .. itemName)
+					LuxUI.SendNotification("Successfully given item ~g~" .. itemName)
 				else
-					drawNotification("~r~You must specify an item")
+					LuxUI.SendNotification("~r~You must specify an item")
 				end
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("VRPOptions") then
+		elseif LuxUI.IsMenuOpened("VRPOptions") then
 
-			if WarMenu.Button("~r~VRP ~s~Give Money ~ypayGarage") then
+			if LuxUI.Button("~r~VRP ~s~Give Money ~ypayGarage") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100)
 				if result then
 					TriggerServerEvent("lscustoms:payGarage", {costs = -result})
 				end
-			elseif WarMenu.Button("~r~VRP ~g~WIN ~s~Slot Machine") then
+			elseif LuxUI.Button("~r~VRP ~g~WIN ~s~Slot Machine") then
 				local result = KeyboardInput("Enter amount of money USE AT YOUR OWN RISK", "", 100)
 				if result then
 					TriggerServerEvent("vrp_slotmachine:server:2", result)
 				end
-			elseif WarMenu.Button("~r~VRP ~s~Get driving license") then
+			elseif LuxUI.Button("~r~VRP ~s~Get driving license") then
 				TriggerServerEvent("dmv:success")
-			elseif WarMenu.Button("~r~VRP ~s~Bank Deposit") then
+			elseif LuxUI.Button("~r~VRP ~s~Bank Deposit") then
 				local result = KeyboardInput("Enter amount of money", "", 100)
 				if result then
 					TriggerServerEvent("bank:deposit", result)
 				end
-			elseif WarMenu.Button("~r~VRP ~s~Bank Withdraw ") then
+			elseif LuxUI.Button("~r~VRP ~s~Bank Withdraw ") then
 				local result = KeyboardInput("Enter amount of money", "", 100)
 				if result then
 					TriggerServerEvent("bank:withdraw", result)
 				end
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("ESXDrugs") then
+		elseif LuxUI.IsMenuOpened("ESXDrugs") then
 
-			if WarMenu.Button("~g~Harvest ~g~Weed") then
+			if LuxUI.Button("~g~Harvest ~g~Weed") then
 				TriggerServerEvent("esx_drugs:startHarvestWeed")
-			elseif WarMenu.Button("~g~Transform ~g~Weed ") then
+			elseif LuxUI.Button("~g~Transform ~g~Weed ") then
 				TriggerServerEvent("esx_drugs:startTransformWeed")
-			elseif WarMenu.Button("~g~Sell ~g~Weed") then
+			elseif LuxUI.Button("~g~Sell ~g~Weed") then
 				TriggerServerEvent("esx_drugs:startSellWeed")
-			elseif WarMenu.Button("~w~Harvest ~w~Coke") then
+			elseif LuxUI.Button("~w~Harvest ~w~Coke") then
 				TriggerServerEvent("esx_drugs:startHarvestCoke")
-			elseif WarMenu.Button("~w~Transform ~w~Coke") then
+			elseif LuxUI.Button("~w~Transform ~w~Coke") then
 				TriggerServerEvent("esx_drugs:startTransformCoke")
-			elseif WarMenu.Button("~w~Sell ~w~Coke") then
+			elseif LuxUI.Button("~w~Sell ~w~Coke") then
 				TriggerServerEvent("esx_drugs:startSellCoke")
-			elseif WarMenu.Button("~r~Harvest Meth") then
+			elseif LuxUI.Button("~r~Harvest Meth") then
 				TriggerServerEvent("esx_drugs:startHarvestMeth")
-			elseif WarMenu.Button("~r~Transform Meth") then
+			elseif LuxUI.Button("~r~Transform Meth") then
 				TriggerServerEvent("esx_drugs:startTransformMeth")
-			elseif WarMenu.Button("~r~Sell Meth") then
+			elseif LuxUI.Button("~r~Sell Meth") then
 				TriggerServerEvent("esx_drugs:startSellMeth")
-			elseif WarMenu.Button("~p~Harvest Opium") then
+			elseif LuxUI.Button("~p~Harvest Opium") then
 				TriggerServerEvent("esx_drugs:startHarvestOpium")
-			elseif WarMenu.Button("~p~Transform Opium") then
+			elseif LuxUI.Button("~p~Transform Opium") then
 				TriggerServerEvent("esx_drugs:startTransformOpium")
-			elseif WarMenu.Button("~p~Sell Opium") then
+			elseif LuxUI.Button("~p~Sell Opium") then
 				TriggerServerEvent("esx_drugs:startSellOpium")
-			elseif WarMenu.Button("~g~Money Wash") then
+			elseif LuxUI.Button("~g~Money Wash") then
 				TriggerServerEvent("esx_blanchisseur:startWhitening", 85)
-			elseif WarMenu.Button("~r~Stop all ~c~Drugs") then
+			elseif LuxUI.Button("~r~Stop all ~c~Drugs") then
 				TriggerServerEvent("esx_drugs:stopHarvestCoke")
 				TriggerServerEvent("esx_drugs:stopTransformCoke")
 				TriggerServerEvent("esx_drugs:stopSellCoke")
@@ -5009,8 +4879,8 @@ local function MenuRuntimeThread()
 				TriggerServerEvent("esx_drugs:stopHarvestOpium")
 				TriggerServerEvent("esx_drugs:stopTransformOpium")
 				TriggerServerEvent("esx_drugs:stopSellOpium")
-				drawNotification("~r~Everything is now stopped")
-			elseif WarMenu.CheckBox("~r~Blow Drugs Up",
+				LuxUI.SendNotification("~r~Everything is now stopped")
+			elseif LuxUI.CheckBox("~r~Blow Drugs Up",
 				BlowDrugsUp,
 				function(enabled)
 					BlowDrugsUp = enabled
@@ -5018,9 +4888,9 @@ local function MenuRuntimeThread()
 			then
 			end
 
-			WarMenu.Display()
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlinePlayersMenu") then
+		elseif LuxUI.IsMenuOpened("OnlinePlayersMenu") then
 			onlinePlayerSelected = {}
 			
 			local plist = GetActivePlayers()
@@ -5028,140 +4898,140 @@ local function MenuRuntimeThread()
 				local id = plist[i]
 				onlinePlayerSelected[i] = id -- equivalent to table.insert(table, value) but faster
 
-				if WarMenu.MenuButton("~b~" .. GetPlayerServerId(id) .. "~w~   " .. GetPlayerName(id), 'PlayerOptionsMenu') then
+				if LuxUI.MenuButton("~b~" .. GetPlayerServerId(id) .. "~w~   " .. GetPlayerName(id), 'PlayerOptionsMenu') then
 					SelectedPlayer = id
 				end
 			end
 
 			local index = menus[currentMenu].currentOption
 
-			WarMenu.DrawPlayerInfo(onlinePlayerSelected[index])
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(onlinePlayerSelected[index])
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("PlayerOptionsMenu") then
-			WarMenu.SetSubTitle("PlayerOptionsMenu", "Player Options [" .. GetPlayerName(SelectedPlayer) .. "]")
+		elseif LuxUI.IsMenuOpened("PlayerOptionsMenu") then
+			LuxUI.SetSubTitle("PlayerOptionsMenu", "Player Options [" .. GetPlayerName(SelectedPlayer) .. "]")
 			
-			if WarMenu.Button("Spectate", (Spectating and "~g~[SPECTATING]")) then
+			if LuxUI.Button("Spectate", (Spectating and "~g~[SPECTATING]")) then
 				SpectatePlayer(SelectedPlayer)
 			end
 
-			if WarMenu.Button("Ragdoll") then
+			if LuxUI.Button("Ragdoll") then
 				SetPedToRagdoll(GetPlayerPed(SelectedPlayer), 3000, 1, 1, true, true, false)
 			end
 
-			if WarMenu.Button("Teleport To Player") then
+			if LuxUI.Button("Teleport To Player") then
 				LUX.Game:TeleportToPlayer(SelectedPlayer)
 			end
 
-			if WarMenu.MenuButton("Weapon Menu", "OnlineWepMenu") then end
-			if WarMenu.MenuButton("Vehicle Menu", "OnlineVehicleMenuPlayer") then end
-			if WarMenu.MenuButton("~b~ESX Options", "ESXMenuPlayer") then end
-			if WarMenu.Button("~r~Silent Explode") then
+			if LuxUI.MenuButton("Weapon Menu", "OnlineWepMenu") then end
+			if LuxUI.MenuButton("Vehicle Menu", "OnlineVehicleMenuPlayer") then end
+			if LuxUI.MenuButton("~b~ESX Options", "ESXMenuPlayer") then end
+			if LuxUI.Button("~r~Silent Explode") then
 				AddExplosion(GetEntityCoords(GetPlayerPed(SelectedPlayer)), 2, 100000.0, false, true, 0)
 			end
-			if WarMenu.Button("~y~Explode") then
+			if LuxUI.Button("~y~Explode") then
 				AddExplosion(GetEntityCoords(GetPlayerPed(SelectedPlayer)), 2, 100000.0, true, false, 100000.0)
 			end
-			if WarMenu.Button("Give All Weapons") then
+			if LuxUI.Button("Give All Weapons") then
 				for hash, v in pairs(t_Weapons) do
 					GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(hash), 255, false, false)
 				end
 			end
-			if WarMenu.Button("Remove All Weapons") then
+			if LuxUI.Button("Remove All Weapons") then
 				RemoveAllPedWeapons(GetPlayerPed(SelectedPlayer), true)
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("ESXMenuPlayer") then
-			if WarMenu.Button("~g~ESX ~s~Send Bill") then
+		elseif LuxUI.IsMenuOpened("ESXMenuPlayer") then
+			if LuxUI.Button("~g~ESX ~s~Send Bill") then
 				local amount = KeyboardInput("Enter Amount", "", 10)
 				local name = KeyboardInput("Enter the name of the Bill", "", 25)
 				if amount and name then
 					TriggerServerEvent('esx_billing:sendBill', GetPlayerServerId(SelectedPlayer), "Purposeless", name, amount)
 				end
-			elseif WarMenu.Button("~g~ESX ~s~Handcuff Player") then
+			elseif LuxUI.Button("~g~ESX ~s~Handcuff Player") then
 				TriggerServerEvent('esx_policejob:handcuff', GetPlayerServerId(SelectedPlayer))
-			elseif WarMenu.Button("~g~ESX ~s~Revive player") then
+			elseif LuxUI.Button("~g~ESX ~s~Revive player") then
 				TriggerServerEvent('esx_ambulancejob:revive', GetPlayerServerId(SelectedPlayer))
-			elseif WarMenu.Button("~g~ESX ~s~Unjail player") then
+			elseif LuxUI.Button("~g~ESX ~s~Unjail player") then
 				TriggerServerEvent("esx_jail:unjailQuest", GetPlayerServerId(SelectedPlayer))
 				TriggerServerEvent("js:removejailtime", GetPlayerServerId(SelectedPlayer))
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineWepMenu") then
-			WarMenu.SetSubTitle("OnlineWepMenu", "Weapon Options - " .. GetPlayerName(SelectedPlayer) .. "")
-			WarMenu.MenuButton("Give Weapon", "OnlineWepCategory")
+		elseif LuxUI.IsMenuOpened("OnlineWepMenu") then
+			LuxUI.SetSubTitle("OnlineWepMenu", "Weapon Options - " .. GetPlayerName(SelectedPlayer) .. "")
+			LuxUI.MenuButton("Give Weapon", "OnlineWepCategory")
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineWepCategory") then
-			WarMenu.SetSubTitle("OnlineWepCategory", "Give Weapon - " .. GetPlayerName(SelectedPlayer) .. "")
+		elseif LuxUI.IsMenuOpened("OnlineWepCategory") then
+			LuxUI.SetSubTitle("OnlineWepCategory", "Give Weapon - " .. GetPlayerName(SelectedPlayer) .. "")
 
-			WarMenu.MenuButton("Melee Weapons", "OnlineMeleeWeapons")
-			WarMenu.MenuButton("Sidearms", "OnlineSidearmWeapons")
-			WarMenu.MenuButton("Auto Rifles", "OnlineAutorifleWeapons")
-			WarMenu.MenuButton("Shotguns", "OnlineShotgunWeapons")
+			LuxUI.MenuButton("Melee Weapons", "OnlineMeleeWeapons")
+			LuxUI.MenuButton("Sidearms", "OnlineSidearmWeapons")
+			LuxUI.MenuButton("Auto Rifles", "OnlineAutorifleWeapons")
+			LuxUI.MenuButton("Shotguns", "OnlineShotgunWeapons")
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineMeleeWeapons") then
+		elseif LuxUI.IsMenuOpened("OnlineMeleeWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_me" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(hash), 0, false, false)
 					end
 				end
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineSidearmWeapons") then
+		elseif LuxUI.IsMenuOpened("OnlineSidearmWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_hg" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(hash), 32, false, false)
 					end
 				end
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineAutorifleWeapons") then
+		elseif LuxUI.IsMenuOpened("OnlineAutorifleWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_ar" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(hash), 60, false, false)
 					end
 				end
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineShotgunWeapons") then
+		elseif LuxUI.IsMenuOpened("OnlineShotgunWeapons") then
 			for hash, v in pairs(t_Weapons) do
 				if v[4] == "w_sg" then
-					if WarMenu.Button(v[1], "isWeapon") then
+					if LuxUI.Button(v[1], "isWeapon") then
 						GiveWeaponToPed(GetPlayerPed(SelectedPlayer), GetHashKey(hash), 18, false, false)
 					end
 				end
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		
-		elseif WarMenu.IsMenuOpened("OnlineVehicleMenuPlayer") then
-			WarMenu.SetSubTitle("OnlineVehicleMenuPlayer", "Vehicle Options [" .. GetPlayerName(SelectedPlayer) .. "]")
-			if WarMenu.Button("Spawn Vehicle") then
+		elseif LuxUI.IsMenuOpened("OnlineVehicleMenuPlayer") then
+			LuxUI.SetSubTitle("OnlineVehicleMenuPlayer", "Vehicle Options [" .. GetPlayerName(SelectedPlayer) .. "]")
+			if LuxUI.Button("Spawn Vehicle") then
 				local ModelName = KeyboardInput("Enter Vehicle Model Name", "", 12)
 				if ModelName and IsModelValid(ModelName) and IsModelAVehicle(ModelName) then
 					RequestModel(ModelName)
@@ -5172,12 +5042,12 @@ local function MenuRuntimeThread()
 					local veh = CreateVehicle(GetHashKey(ModelName), GetEntityCoords(GetPlayerPed(SelectedPlayer)), GetEntityHeading(GetPlayerPed(SelectedPlayer)), true, true)
 
 					SetPedIntoVehicle(GetPlayerPed(SelectedPlayer), veh, -1)
-					drawNotification({text = NotifyFormat("Successfully spawned ~b~%s ~s~on ~t~%s", string.lower(GetDisplayNameFromVehicleModel(ModelName)), GetPlayerName(SelectedPlayer)), type = "info"})
+					LuxUI.SendNotification({text = NotifyFormat("Successfully spawned ~b~%s ~s~on ~t~%s", string.lower(GetDisplayNameFromVehicleModel(ModelName)), GetPlayerName(SelectedPlayer)), type = "info"})
 				else
-					drawNotification("~r~Model is not valid!")
+					LuxUI.SendNotification("~r~Model is not valid!")
 				end
 			end
-			if WarMenu.Button("Spawn Owned Vehicle") then
+			if LuxUI.Button("Spawn Owned Vehicle") then
 				local ped = GetPlayerPed(SelectedPlayer)
 				local ModelName = KeyboardInput("Enter Vehicle Spawn Name", "", 100)
 				local newPlate =  KeyboardInput("Enter Vehicle License Plate", "", 8)
@@ -5190,19 +5060,19 @@ local function MenuRuntimeThread()
 
 					local veh = CreateVehicle(GetHashKey(ModelName), GetEntityCoords(ped), GetEntityHeading(ped), true, true)
 					SetVehicleNumberPlateText(veh, newPlate)
-					local vehicleProps = ESX.Game.GetVehicleProperties(veh)
+					local vehicleProps = LUX.Game.GetVehicleProperties(veh)
 					TriggerServerEvent('esx_vehicleshop:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
 					TriggerServerEvent('esx_givecarkeys:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
 					TriggerServerEvent('garage:addKeys', newPlate)
 					SetPedIntoVehicle(GetPlayerPed(SelectedPlayer), veh, -1)
 				else
-					drawNotification("~r~Model is not valid!")
+					LuxUI.SendNotification({ text = "Vehicle model " .. ModelName .. " does not exist!", type = "error"})
 				end
 			end
-			if WarMenu.Button("Kick From Vehicle") then
+			if LuxUI.Button("Kick From Vehicle") then
 				ClearPedTasksImmediately(GetPlayerPed(SelectedPlayer))
 			end
-			if WarMenu.Button("Destroy Engine") then
+			if LuxUI.Button("Destroy Engine") then
 
 				local playerPed = GetPlayerPed(SelectedPlayer)
 
@@ -5211,7 +5081,7 @@ local function MenuRuntimeThread()
 				SetVehicleUndriveable(GetVehiclePedIsIn(playerPed),true)
 				SetVehicleEngineHealth(GetVehiclePedIsIn(playerPed), 100)
 			end
-			if WarMenu.Button("Explode on Impact") then
+			if LuxUI.Button("Explode on Impact") then
 
 				local ped = GetPlayerPed(SelectedPlayer)
 				local veh = GetVehiclePedIsIn(ped, 0)
@@ -5220,7 +5090,7 @@ local function MenuRuntimeThread()
 
 				SetVehicleOutOfControl(veh, false, true)
 			end
-			if WarMenu.Button("Repair Vehicle") then
+			if LuxUI.Button("Repair Vehicle") then
 				NetworkRequestControlOfEntity(GetVehiclePedIsIn(SelectedPlayer))
 				SetVehicleFixed(GetVehiclePedIsIn(GetPlayerPed(SelectedPlayer), false))
 				SetVehicleDirtLevel(GetVehiclePedIsIn(GetPlayerPed(SelectedPlayer), false), 0.0)
@@ -5228,7 +5098,7 @@ local function MenuRuntimeThread()
 				SetVehicleBurnout(GetVehiclePedIsIn(GetPlayerPed(SelectedPlayer), false), false)
 				Citizen.InvokeNative(0x1FD09E7390A74D54, GetVehiclePedIsIn(GetPlayerPed(SelectedPlayer), false), 0)
 			end
-			if WarMenu.Button("Vandalize Car") then
+			if LuxUI.Button("Vandalize Car") then
 				local playerPed = GetPlayerPed(SelectedPlayer)
 				local playerVeh = GetVehiclePedIsIn(playerPed, true)
 				NetworkRequestControlOfEntity(GetVehiclePedIsIn(SelectedPlayer))
@@ -5264,301 +5134,75 @@ local function MenuRuntimeThread()
 				SetVehicleCustomPrimaryColour(playerVeh, 231, 76, 60) -- r = 231, g = 76, b = 60
 				SetVehicleCustomSecondaryColour(playerVeh, 231, 76, 60)
 				SetVehicleBurnout(playerVeh, true)
-				drawNotification("~g~Vehicle Fucked Up!")
+				LuxUI.SendNotification("~g~Vehicle Fucked Up!")
 			end
 
-			WarMenu.DrawPlayerInfo(SelectedPlayer)
-			WarMenu.Display()
+			LuxUI.DrawPlayerInfo(SelectedPlayer)
+			LuxUI.Display()
 		end
 
-		-- for i,theItem in pairs(LSC.vehicleMods) do
-
-		-- 	if WarMenu.IsMenuOpened(41) or WarMenu.IsMenuOpened(39) or WarMenu.IsMenuOpened(40) or WarMenu.IsMenuOpened(45) then
-		-- 		SetVehicleDoorOpen(veh, 4, false, true)
-		-- 	elseif WarMenu.IsMenuOpened(38) or WarMenu.IsMenuOpened(37) then
-		-- 		SetVehicleDoorOpen(veh, 5, false, true)
-
-		-- 	elseif WarMenu.IsMenuOpened("tunings") then
-		-- 		--SetVehicleDoorShut(veh, 4, false)
-		-- 		--SetVehicleDoorShut(veh, 5, false)
-		-- 		if isPreviewing then
-		-- 			if oldmodtype == "neon" then
-		-- 				local r,g,b = table.unpack(oldmod)
-		-- 				SetVehicleNeonLightsColour(veh,r,g,b)
-		-- 				SetVehicleNeonLightEnabled(veh, 0, oldmodaction)
-		-- 				SetVehicleNeonLightEnabled(veh, 1, oldmodaction)
-		-- 				SetVehicleNeonLightEnabled(veh, 2, oldmodaction)
-		-- 				SetVehicleNeonLightEnabled(veh, 3, oldmodaction)
-		-- 				isPreviewing = false
-		-- 				oldmodtype = -1
-		-- 				oldmod = -1
-		-- 			elseif oldmodtype == "paint" then
-		-- 				local pa,pb,pc,pd = table.unpack(oldmod)
-		-- 				SetVehicleColours(veh, pa,pb)
-		-- 				SetVehicleExtraColours(veh,pc,pd)
-		-- 				isPreviewing = false
-		-- 				oldmodtype = -1
-		-- 				oldmod = -1
-		-- 			else
-		-- 				if oldmodaction == "rm" then
-		-- 					RemoveVehicleMod(veh, oldmodtype)
-		-- 					isPreviewing = false
-		-- 					oldmodtype = -1
-		-- 					oldmod = -1
-		-- 				else
-		-- 					SetVehicleMod(veh, oldmodtype,oldmod,false)
-		-- 					isPreviewing = false
-		-- 					oldmodtype = -1
-		-- 					oldmod = -1
-		-- 				end
-		-- 			end
-		-- 		end
-		-- 	end
-
-		-- 	if WarMenu.IsMenuOpened(theItem.id) then
-		-- 		if theItem.id == "wheeltypes" then
-		-- 			if WarMenu.Button("Sport Wheels") then
-		-- 				SetVehicleWheelType(veh,0)
-		-- 			elseif WarMenu.Button("Muscle Wheels") then
-		-- 				SetVehicleWheelType(veh,1)
-		-- 			elseif WarMenu.Button("Lowrider Wheels") then
-		-- 				SetVehicleWheelType(veh,2)
-		-- 			elseif WarMenu.Button("SUV Wheels") then
-		-- 				SetVehicleWheelType(veh,3)
-		-- 			elseif WarMenu.Button("Offroad Wheels") then
-		-- 				SetVehicleWheelType(veh,4)
-		-- 			elseif WarMenu.Button("Tuner Wheels") then
-		-- 				SetVehicleWheelType(veh,5)
-		-- 			elseif WarMenu.Button("High End Wheels") then
-		-- 				SetVehicleWheelType(veh,7)
-		-- 			end
-		-- 			WarMenu.Display()
-		-- 		elseif theItem.id == "extra" then
-		-- 			local extras = LSC:CheckValidVehicleExtras()
-		-- 			for i,theItem in pairs(extras) do
-		-- 				if IsVehicleExtraTurnedOn(veh,i) then
-		-- 					pricestring = "~g~Installed"
-		-- 				else
-		-- 					pricestring = "Not Installed"
-		-- 				end
-
-		-- 				if WarMenu.Button(theItem.menuName, pricestring) then
-		-- 					if not IsVehicleExtraTurnedOn(veh, i) then
-		-- 						local payed = true
-		-- 						if payed then
-		-- 							SetVehicleExtra(veh, i, IsVehicleExtraTurnedOn(veh,i))
-		-- 						end
-		-- 					else
-		-- 						SetVehicleExtra(veh, i, IsVehicleExtraTurnedOn(veh,i))
-		-- 					end
-		-- 				end
-		-- 			end
-		-- 			WarMenu.Display()
-		-- 		elseif theItem.id == "neon" then
-
-		-- 			if WarMenu.Button("None", "Default") then
-		-- 				SetVehicleNeonLightsColour(veh,255,255,255)
-		-- 				SetVehicleNeonLightEnabled(veh,0,false)
-		-- 				SetVehicleNeonLightEnabled(veh,1,false)
-		-- 				SetVehicleNeonLightEnabled(veh,2,false)
-		-- 				SetVehicleNeonLightEnabled(veh,3,false)
-		-- 			end
-
-
-		-- 			for i,theItem in pairs(LSC.neonColors) do
-		-- 				colorr,colorg,colorb = table.unpack(theItem)
-		-- 				r,g,b = GetVehicleNeonLightsColour(veh)
-
-		-- 				if colorr == r and colorg == g and colorb == b and IsVehicleNeonLightEnabled(veh,2) and not isPreviewing then
-		-- 					pricestring = "~g~Installed"
-		-- 				else
-		-- 					if isPreviewing and colorr == r and colorg == g and colorb == b then
-		-- 						pricestring = "~y~Previewing"
-		-- 					else
-		-- 						pricestring = "Not Installed"
-		-- 					end
-		-- 				end
-
-		-- 				if WarMenu.Button(i, pricestring) then
-		-- 					if not isPreviewing then
-		-- 						oldmodtype = "neon"
-		-- 						oldmodaction = IsVehicleNeonLightEnabled(veh,1)
-		-- 						oldr,oldg,oldb = GetVehicleNeonLightsColour(veh)
-		-- 						oldmod = table.pack(oldr,oldg,oldb)
-		-- 						SetVehicleNeonLightsColour(veh,colorr,colorg,colorb)
-		-- 						SetVehicleNeonLightEnabled(veh,0,true)
-		-- 						SetVehicleNeonLightEnabled(veh,1,true)
-		-- 						SetVehicleNeonLightEnabled(veh,2,true)
-		-- 						SetVehicleNeonLightEnabled(veh,3,true)
-		-- 						isPreviewing = true
-		-- 					elseif isPreviewing and colorr == r and colorg == g and colorb == b then
-		-- 						SetVehicleNeonLightsColour(veh,colorr,colorg,colorb)
-		-- 						SetVehicleNeonLightEnabled(veh,0,true)
-		-- 						SetVehicleNeonLightEnabled(veh,1,true)
-		-- 						SetVehicleNeonLightEnabled(veh,2,true)
-		-- 						SetVehicleNeonLightEnabled(veh,3,true)
-		-- 						isPreviewing = false
-		-- 						oldmodtype = -1
-		-- 						oldmod = -1
-		-- 					elseif isPreviewing and colorr ~= r or colorg ~= g or colorb ~= b then
-		-- 						SetVehicleNeonLightsColour(veh,colorr,colorg,colorb)
-		-- 						SetVehicleNeonLightEnabled(veh,0,true)
-		-- 						SetVehicleNeonLightEnabled(veh,1,true)
-		-- 						SetVehicleNeonLightEnabled(veh,2,true)
-		-- 						SetVehicleNeonLightEnabled(veh,3,true)
-		-- 						isPreviewing = true
-		-- 					end
-		-- 				end
-		-- 			end
-		-- 			WarMenu.Display()
-		-- 		elseif theItem.id == "paint" then
-
-		-- 			if WarMenu.MenuButton("Primary Paint","primary") then
-
-		-- 			elseif WarMenu.MenuButton("Secondary Paint","secondary") then
-
-		-- 			elseif WarMenu.MenuButton("Wheel Paint","rimpaint") then
-
-		-- 			end
-
-		-- 			WarMenu.Display()
-		-- 		else
-		-- 			local valid = LSC:CheckValidVehicleMods(theItem.id)
-		-- 			for ci,ctheItem in pairs(valid) do
-		-- 				for eh,tehEtem in pairs(modPrices) do
-		-- 					if eh == theItem.name and GetVehicleMod(veh,theItem.id) ~= ctheItem.data.realIndex then
-		-- 						price = "Not Installed"
-		-- 						actualprice = tehEtem
-		-- 					elseif eh == theItem.name and isPreviewing and GetVehicleMod(veh,theItem.id) == ctheItem.data.realIndex then
-		-- 						price = "~y~Previewing"
-		-- 						actualprice = tehEtem
-		-- 					elseif eh == theItem.name and GetVehicleMod(veh,theItem.id) == ctheItem.data.realIndex then
-		-- 						price = "~g~Installed"
-		-- 						actualprice = tehEtem
-		-- 					end
-		-- 				end
-		-- 				if ctheItem.menuName == "Stock" then price = 0 end
-		-- 				if theItem.name == "Horns" then
-		-- 					for chorn,HornId in pairs(LSC.horns) do
-		-- 						if HornId == ci-1 then
-		-- 							ctheItem.menuName = chorn
-		-- 						end
-		-- 					end
-		-- 				end
-		-- 				if ctheItem.menuName == "NULL" then
-		-- 					ctheItem.menuName = "unknown"
-		-- 				end
-		-- 				if WarMenu.Button(ctheItem.menuName, price) then
-
-
-
-
-
-		-- 					if not isPreviewing then
-		-- 						oldmodtype = theItem.id
-		-- 						oldmod = GetVehicleMod(veh, theItem.id)
-		-- 						isPreviewing = true
-		-- 						if ctheItem.data.realIndex == -1 then
-		-- 							oldmodaction = "rm"
-		-- 							RemoveVehicleMod(veh, ctheItem.data.modid)
-		-- 							isPreviewing = false
-		-- 							oldmodtype = -1
-		-- 							oldmod = -1
-		-- 							oldmodaction = false
-		-- 						else
-		-- 							oldmodaction = false
-		-- 							SetVehicleMod(veh, theItem.id, ctheItem.data.realIndex, false)
-		-- 						end
-		-- 					elseif isPreviewing and GetVehicleMod(veh,theItem.id) == ctheItem.data.realIndex then
-		-- 						isPreviewing = false
-		-- 						oldmodtype = -1
-		-- 						oldmod = -1
-		-- 						oldmodaction = false
-		-- 						if ctheItem.data.realIndex == -1 then
-		-- 							RemoveVehicleMod(veh, ctheItem.data.modid)
-		-- 						else
-		-- 							SetVehicleMod(veh, theItem.id, ctheItem.data.realIndex, false)
-		-- 						end
-		-- 					elseif isPreviewing and GetVehicleMod(veh,theItem.id) ~= ctheItem.data.realIndex then
-		-- 						if ctheItem.data.realIndex == -1 then
-		-- 							RemoveVehicleMod(veh, ctheItem.data.modid)
-		-- 							isPreviewing = false
-		-- 							oldmodtype = -1
-		-- 							oldmod = -1
-		-- 							oldmodaction = false
-		-- 						else
-		-- 							SetVehicleMod(veh, theItem.id, ctheItem.data.realIndex, false)
-		-- 							isPreviewing = true
-		-- 						end
-		-- 					end
-		-- 				end
-		-- 			end
-		-- 			WarMenu.Display()
-		-- 		end
-		-- 	end
-		-- end
-
-		-- for i,theItem in pairs(LSC.perfMods) do
-		-- 	if GetVehicleMod(veh,theItem.id) == 0 then
-		-- 		pricestock = "Default"
-		-- 		price1 = "~g~Installed"
-		-- 		price2 = "Not Installed"
-		-- 		price3 = "Not Installed"
-		-- 		price4 = "Not Installed"
-		-- 	elseif GetVehicleMod(veh,theItem.id) == 1 then
-		-- 		pricestock = "Default"
-		-- 		price1 = "Not Installed"
-		-- 		price2 = "~g~Installed"
-		-- 		price3 = "Not Installed"
-		-- 		price4 = "Not Installed"
-		-- 	elseif GetVehicleMod(veh,theItem.id) == 2 then
-		-- 		pricestock = "Default"
-		-- 		price1 = "Not Installed"
-		-- 		price2 = "Not Installed"
-		-- 		price3 = "~g~Installed"
-		-- 		price4 = "Not Installed"
-		-- 	elseif GetVehicleMod(veh,theItem.id) == 3 then
-		-- 		pricestock = "Default"
-		-- 		price1 = "Not Installed"
-		-- 		price2 = "Not Installed"
-		-- 		price3 = "Not Installed"
-		-- 		price4 = "~g~Installed"
-		-- 	elseif GetVehicleMod(veh,theItem.id) == -1 then
-		-- 		pricestock = "~g~Installed"
-		-- 		price1 = "Not Installed"
-		-- 		price2 = "Not Installed"
-		-- 		price3 = "Not Installed"
-		-- 		price4 = "Not Installed"
-		-- 	end
-		-- 	if WarMenu.IsMenuOpened(theItem.id) then
-
-		-- 		if WarMenu.Button("Stock "..theItem.name, pricestock) then
-		-- 			SetVehicleModKit(veh, 0)
-		-- 			SetVehicleMod(veh, theItem.id, -1, false)
-		-- 			print ("applied -1")
-		-- 		elseif WarMenu.Button(theItem.name.." Upgrade 1", price1) then
-		-- 			SetVehicleModKit(veh, 0)
-		-- 			SetVehicleMod(veh, theItem.id, 0, false)
-		-- 			print ("applied 0")
-		-- 		elseif WarMenu.Button(theItem.name.." Upgrade 2", price2) then
-		-- 			SetVehicleModKit(veh, 0)
-		-- 			SetVehicleMod(veh, theItem.id, 1, false)
-		-- 			print ("applied 1")
-		-- 		elseif WarMenu.Button(theItem.name.." Upgrade 3", price3) then
-		-- 			SetVehicleModKit(veh, 0)
-		-- 			SetVehicleMod(veh, theItem.id, 2, false)
-		-- 			print ("applied 2")
-		-- 		elseif theItem.id ~= 13 and theItem.id ~= 12 and WarMenu.Button(theItem.name.." Upgrade 4", price4) then
-		-- 			SetVehicleModKit(veh, 0)
-		-- 			SetVehicleMod(veh, theItem.id, 3, false)
-		-- 			print ("applied 3")
-		-- 		end
-		-- 		WarMenu.Display()
-		-- 	end
-
-		-- end
-
-		--print("draw done")
+		for i, mods in pairs(LSC.vehicleMods) do
+			if mods.meta == "modHorns" then
+				if LuxUI.IsMenuOpened(mods.meta) then
+					for j = 0, 51, 1 do
+						if j == currentMods[mods.meta] then
+							if LuxUI.Button(LSC.GetHornName(j), "Installed", nil, _menuColor.base) then 
+								RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+								LSC.UpdateMods()
+							end
+						else
+							if LuxUI.Button(LSC.GetHornName(j), "Not Installed") then 
+								SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+								LSC.UpdateMods()
+							end
+						end
+					end
+					LuxUI.Display()
+				end
+			elseif mods.meta == "modFrontWheels" or mods.meta == "modBackWheels" then
+				if LuxUI.IsMenuOpened(mods.meta) then
+					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, mods.id)
+					for j = 0, modCount, 1 do
+						local modName = GetModTextLabel(LUX.Player.Vehicle, mods.id, j)
+						if modName then
+							if j == currentMods[mods.meta] then
+								if LuxUI.Button(GetLabelText(modName), "Installed", nil, _menuColor.base) then 
+									RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+									LSC.UpdateMods()
+								end
+							else
+								if LuxUI.Button(GetLabelText(modName), "Not Installed") then 
+									SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+									LSC.UpdateMods()
+								end
+							end
+						end
+					end
+					LuxUI.Display()
+				end
+			else
+				if LuxUI.IsMenuOpened(mods.meta) then
+					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, mods.id)
+					for j = 0, modCount, 1 do
+						local modName = GetModTextLabel(LUX.Player.Vehicle, mods.id, j)
+						if modName then
+							if j == currentMods[mods.meta] then
+								if LuxUI.Button(GetLabelText(modName), "Installed", nil, _menuColor.base) then 
+									RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+									LSC.UpdateMods()
+								end
+							else
+								if LuxUI.Button(GetLabelText(modName), "Not Installed") then 
+									SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+									LSC.UpdateMods()
+								end
+							end
+						end
+					end
+					LuxUI.Display()
+				end
+			end
+		end
 		
 		Wait(0)
 	end
@@ -5571,12 +5215,12 @@ local function GateKeep()
 	_buyer = "leuit"
 	if _gatekeeper then
 		if name == _buyer and GetCurrentLanguage() == 0 then
-			WarMenu.OpenMenu("LuxMainMenu")
-			--drawNotification({text = "This is hopefully going to make it all the way to a multiline so I can finish my damn notification"})	
+			LuxUI.OpenMenu("LuxMainMenu")
+			--LuxUI.SendNotification({text = "This is hopefully going to make it all the way to a multiline so I can finish my damn notification"})	
 
 		else
 			_auth = false
-			drawNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
+			LuxUI.SendNotification("~r~ERROR: ~w~You don't appear to own ~h~LUX MENU")
 		end
 	else
 		_auth = true
