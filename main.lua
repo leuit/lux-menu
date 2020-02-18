@@ -1,8 +1,8 @@
 local CreateThread = Citizen.CreateThread
 
-LUX = {}
+local Lux = {}
 
-function LUX:CheckName(str) 
+function Lux:CheckName(str) 
 	if string.len(str) > 16 then
 		fmt = string.sub(str, 1, 16)
 		return tostring(fmt .. "...")
@@ -16,16 +16,63 @@ local contributors = {
 	{"Joeyarrabi#7440", "Menu Reference"}
 }
 
-LUX.Math = {}
-LUX.Player = {
-	inVehicle = false,
+Lux.Math = {}
+
+Lux.Math.Round = function(value, numDecimalPlaces)
+	return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", value))
+end
+
+Lux.Math.GroupDigits = function(value)
+	local left,num,right = string.match(value,'^([^%d]*%d)(%d*)(.-)$')
+
+	return left..(num:reverse():gsub('(%d%d%d)','%1' .. _U('locale_digit_grouping_symbol')):reverse())..right
+end
+
+Lux.Math.Trim = function(value)
+	if value then
+		return (string.gsub(value, "^%s*(.-)%s*$", "%1"))
+	else
+		return nil
+	end
+end
+
+Lux.Player = {
+	IsInVehicle = false,
 	isNoclipping = false,
+	Vehicle = 0,
 }
+
+-- Menu toggle table
+Lux.Toggle = {
+	RainbowVehicle = false,
+	ReplaceVehicle = true,
+	SpawnInVehicle = true,
+
+}
+
+local storedPrimary, storedSecondary = nil
+
+local function RainbowVehicle(justToggled)
+	if Lux.Player.IsInVehicle then
+		if justToggled then
+			storedPrimary, storedSecondary = GetVehicleColours(Lux.Player.Vehicle)
+			Lux.Toggle.RainbowVehicle = justToggled
+		else
+			Lux.Toggle.RainbowVehicle = justToggled
+			ClearVehicleCustomPrimaryColour(Lux.Player.Vehicle)
+			ClearVehicleCustomSecondaryColour(Lux.Player.Vehicle)
+			SetVehicleColours(Lux.Player.Vehicle, storedPrimary, storedSecondary)
+		end
+	else
+		Lux.Toggle.RainbowVehicle = justToggled
+	end
+end
+
+Lux.Game = {}
 
 local NoclipSpeed = 1
 local oldSpeed = 1
 
-LUX.Game = {}
 
 local isMenuEnabled = true
 
@@ -36,7 +83,8 @@ local _menuColor = {
     highlight = { r = 155, g = 89, b = 182, a = 150 },
     shadow = { r = 96, g = 52, b = 116, a = 150 },
 }
--- License key validation for LUX
+
+-- License key validation for Lux
 local _buyer
 local _secretKey = "devbuild"
 local _gatekeeper = true
@@ -45,7 +93,7 @@ local _auth = false
 AddTextEntry('notification_buffer', '~a~')
 AddTextEntry('text_buffer', '~a~')
 AddTextEntry('preview_text_buffer', '~a~')
-AddTextEntry('keyboard_title_buffer', '~a~')
+RegisterTextLabelToSave('keyboard_title_buffer')
 
 -- Classes
 -- > Gatekeeper
@@ -140,33 +188,117 @@ local t_Weapons = {
 
 local onlinePlayerSelected = {} -- used for Online Players menu
 
---Fast Run/Swim Options
-local HealthCB = {50, 100, 150, 200}
-local HealthCBWords = {"25%", "50%", "75%", "100%"}
--- Default
-local SetHealthValue = 200
+local function KeyboardInput(title, initialText, bufferSize)
+	local editing, finished, cancelled, notActive = 0, 1, 2, 3
 
---local selectedIndex = 1
+	AddTextEntry("keyboard_title_buffer", title)
+	DisplayOnscreenKeyboard(0, "keyboard_title_buffer", "", initialText, "", "", "", bufferSize)
 
-local FastCB = {1.0, 1.09, 1.19, 1.29, 1.39, 1.49}
-local FastCBWords = {"Default", "+20%", "+40%", "+60%", "+80%", "+100%"}
+	while UpdateOnscreenKeyboard() == editing do
+		HideHudAndRadarThisFrame()
+		Wait(0)
+	end
 
-local selFastRunIndex = 1
+	if GetOnscreenKeyboardResult() then return GetOnscreenKeyboardResult() end
+end
+
+local SliderOptions = {}
+
+SliderOptions.FastRun = {
+	Selected = 1,
+	Values = {1.0, 1.09, 1.19, 1.29, 1.39, 1.49},
+	Words = {"Default", "+20%", "+40%", "+60%", "+80%", "+100%"},
+}
+
+
+local ComboOptions = {}
+
+ComboOptions.EnginePower = {
+	Selected = 1,
+	Values = {1.0, 25.0, 50.0, 100.0, 200.0},
+	Words = {"Default", "+25%", "+50%", "+75%", "+100%"}
+}
+
+local function GetDirtLevel(vehicle)
+	local x = GetVehicleDirtLevel(vehicle)
+	local val = floor(((x / 7.5) + 1) + 0.5)
+	
+	return val
+end
+
+ComboOptions.DirtLevel = {
+	Selected = GetDirtLevel,
+	Values = {0.0, 7.5, 15.0},
+	Words = {"Clean", "Dirty", "Filthy"}
+}
+
+local function RepairVehicle(vehicle)
+	local vehicle = vehicle
+	if vehicle == 0 then return false end
+
+	SetVehicleFixed(vehicle)
+	SetVehicleLights(vehicle, 0)
+	SetVehicleBurnout(vehicle, false)
+	SetVehicleLightsMode(vehicle, 0)
+
+	return true
+end
+
+local function FlipVehicle(vehicle)
+	local vehicle = vehicle
+	if vehicle == 0 then return false end
+
+	return SetVehicleOnGroundProperly(vehicle)
+end
+
+local function GetVehicleInFrontOfMe()
+	
+	local playerPos = GetEntityCoords( PlayerPedId(), 1 )
+	local inFront = GetOffsetFromEntityInWorldCoords( ped, 0.0, 5.0, 0.0 )
+	local rayHandle = CastRayPointToPoint( playerPos.x, playerPos.y, playerPos.z, inFront.x, inFront.y, inFront.z, 10, PlayerPedId(), 0 )
+    local _, _, _, _, vehicle = GetRaycastResult( rayHandle )
+	
+	return vehicle
+end
+
+local function RemoveVehicle(vehicle)
+	local vehicle = vehicle
+	if vehicle == 0 then return false end
+
+	SetEntityAsMissionEntity(vehicle, true, true)
+	DeleteVehicle(vehicle)
+
+	return true
+end
+
+local function ChangeVehiclePlateText(vehicle)
+	local plateText = KeyboardInput("Enter new plate text", "", 8)
+
+	if vehicle ~= 0 then 
+		SetVehicleNumberPlateText(vehicle, plateText)
+		return true
+	end
+
+	return false
+end
+
+ComboOptions.VehicleActions = {
+	Selected = 1,
+	Values = {RepairVehicle, FlipVehicle, RemoveVehicle},
+	Words = {"Repair", "Flip", "Delete"}
+}
 
 local currentMods = nil
 local EngineUpgrade = {-1, 0, 1, 2, 3}
 local VehicleUpgradeWords = {
 
-	{"Default", "Level 1"},
-	{"Default", "Level 1", "Level 2"},
-	{"Default", "Level 1", "Level 2", "Level 3"},
-	{"Default", "Level 1", "Level 2", "Level 3", "Level 4"},
+	{"STOCK", "MAX LEVEL"},
+	{"STOCK", "LEVEL 1", "MAX LEVEL"},
+	{"STOCK", "LEVEL 1", "LEVEL 2", "MAX LEVEL"},
+	{"STOCK", "LEVEL 1", "LEVEL 2", "LEVEL 3", "MAX LEVEL"},
+	{"STOCK", "LEVEL 1", "LEVEL 2", "LEVEL 3", "LEVEL 4", "MAX LEVEL"},
 
 }
-
-
-
-local _weaponSprite = ""
 
 local themeColors = {
 	red = { r = 231, g = 76, b = 60, a = 255 },  -- rgb(231, 76, 60)
@@ -195,6 +327,7 @@ local texture_preload = {
 	"mpleaderboard",
 	"mphud",
 	"mparrow",
+	"pilotschool",
 	"shared",
 }
 
@@ -279,7 +412,7 @@ end
 
 RefreshResourceData()
 
-LUX.Keys = {
+Lux.Keys = {
 	["ESC"] = 322, ["F1"] = 288, ["F2"] = 289, ["F3"] = 170, ["F5"] = 166, ["F6"] = 167, ["F7"] = 168, ["F8"] = 169, ["F9"] = 56, ["F10"] = 57,
     ["~"] = 243, ["1"] = 157, ["2"] = 158, ["3"] = 160, ["4"] = 164, ["5"] = 165, ["6"] = 159, ["7"] = 161, ["8"] = 162, ["9"] = 163, ["-"] = 84, ["="] = 83, ["BACKSPACE"] = 177,
     ["TAB"] = 37, ["Q"] = 44, ["W"] = 32, ["E"] = 38, ["R"] = 45, ["T"] = 245, ["Y"] = 246, ["U"] = 303, ["P"] = 199, ["["] = 39, ["]"] = 40, ["ENTER"] = 18,
@@ -292,25 +425,7 @@ LUX.Keys = {
     ["MOUSE1"] = 24
 }
 
-LUX.Math.Round = function(value, numDecimalPlaces)
-	return tonumber(string.format("%." .. (numDecimalPlaces or 0) .. "f", value))
-end
-
-LUX.Math.GroupDigits = function(value)
-	local left,num,right = string.match(value,'^([^%d]*%d)(%d*)(.-)$')
-
-	return left..(num:reverse():gsub('(%d%d%d)','%1' .. _U('locale_digit_grouping_symbol')):reverse())..right
-end
-
-LUX.Math.Trim = function(value)
-	if value then
-		return (string.gsub(value, "^%s*(.-)%s*$", "%1"))
-	else
-		return nil
-	end
-end
-
-function LUX.Game:GetPlayers()
+function Lux.Game:GetPlayers()
 	local players = {}
 	
 	for _,player in ipairs(GetActivePlayers()) do
@@ -324,8 +439,8 @@ function LUX.Game:GetPlayers()
 	return players
 end
 
-function LUX.Game:GetPlayersInArea(coords, area)
-	local players       = LUX.Game:GetPlayers()
+function Lux.Game:GetPlayersInArea(coords, area)
+	local players       = Lux.Game:GetPlayers()
 	local playersInArea = {}
 
 	for i=1, #players, 1 do
@@ -341,7 +456,7 @@ function LUX.Game:GetPlayersInArea(coords, area)
 	return playersInArea
 end
 
-function LUX.Game:GetPedStatus(playerPed) 
+function Lux.Game:GetPedStatus(playerPed) 
 
 	local inVehicle = IsPedInAnyVehicle(playerPed, false)
 	local isIdle = IsPedStill(playerPed)
@@ -366,7 +481,7 @@ function LUX.Game:GetPedStatus(playerPed)
 
 end
 
-function LUX.Game:GetCamDirection()
+function Lux.Game:GetCamDirection()
     local heading = GetGameplayCamRelativeHeading() + GetEntityHeading(PlayerPedId())
     local pitch = GetGameplayCamRelativePitch()
     
@@ -384,7 +499,7 @@ function LUX.Game:GetCamDirection()
     return x, y, z
 end
 
-function LUX.Game:GetSeatPedIsIn(ped)
+function Lux.Game:GetSeatPedIsIn(ped)
 	if not IsPedInAnyVehicle(ped, false) then return
 	else
 		veh = GetVehiclePedIsIn(ped)
@@ -394,7 +509,7 @@ function LUX.Game:GetSeatPedIsIn(ped)
 	end
 end
 
-function LUX.Game:RequestControlOnce(entity)
+function Lux.Game:RequestControlOnce(entity)
     if not NetworkIsInSession or NetworkHasControlOfEntity(entity) then
         return true
     end
@@ -402,13 +517,13 @@ function LUX.Game:RequestControlOnce(entity)
     return NetworkRequestControlOfEntity(entity)
 end
 
-function LUX.Game:TeleportToPlayer(target)
+function Lux.Game:TeleportToPlayer(target)
 	local ped = GetPlayerPed(target)
     local pos = GetEntityCoords(ped)
     SetEntityCoords(PlayerPedId(), pos)
 end
 
-function LUX.Game.GetVehicleProperties(vehicle)
+function Lux.Game.GetVehicleProperties(vehicle)
 	if DoesEntityExist(vehicle) then
 		local colorPrimary, colorSecondary = GetVehicleColours(vehicle)
 		local pearlescentColor, wheelColor = GetVehicleExtraColours(vehicle)
@@ -424,14 +539,14 @@ function LUX.Game.GetVehicleProperties(vehicle)
 		return {
 			model             = GetEntityModel(vehicle),
 
-			plate             = LUX.Math.Trim(GetVehicleNumberPlateText(vehicle)),
+			plate             = Lux.Math.Trim(GetVehicleNumberPlateText(vehicle)),
 			plateIndex        = GetVehicleNumberPlateTextIndex(vehicle),
 
-			bodyHealth        = LUX.Math.Round(GetVehicleBodyHealth(vehicle), 1),
-			engineHealth      = LUX.Math.Round(GetVehicleEngineHealth(vehicle), 1),
+			bodyHealth        = Lux.Math.Round(GetVehicleBodyHealth(vehicle), 1),
+			engineHealth      = Lux.Math.Round(GetVehicleEngineHealth(vehicle), 1),
 
-			fuelLevel         = LUX.Math.Round(GetVehicleFuelLevel(vehicle), 1),
-			dirtLevel         = LUX.Math.Round(GetVehicleDirtLevel(vehicle), 1),
+			fuelLevel         = Lux.Math.Round(GetVehicleFuelLevel(vehicle), 1),
+			dirtLevel         = Lux.Math.Round(GetVehicleDirtLevel(vehicle), 1),
 			color1            = colorPrimary,
 			color2            = colorSecondary,
 
@@ -555,6 +670,7 @@ LSC.vehicleMods = {
 }
 
 LSC.perfMods = {
+	{name = "Armor", id = 16, meta = "modArmor"},
 	{name = "Engine", id = 11, meta = "modEngine"},
 	{name = "Brakes", id = 12, meta = "modBrakes"},
 	{name = "Transmission", id = 13, meta = "modTransmission"},
@@ -601,7 +717,7 @@ LSC.horns = {
 
 }
 
-LSC.WheelType = {"Sport", "Muscle", "Lowrider", "SUV", "Offroad", "Tuner", "Bike Wheels", "High End"}
+LSC.WheelType = {"Sport", "Muscle", "Lowrider", "SUV", "Offroad", "Tuner", "Bike", "High End"}
 
 LSC.neonColors = {
 	["White"] = {255,255,255},
@@ -838,8 +954,8 @@ function LSC.GetHornName(index)
 end
 
 function LSC.UpdateMods()
-	currentMods = LUX.Game.GetVehicleProperties(LUX.Player.Vehicle)
-	--SetVehicleModKit(LUX.Player.Vehicle, 0)
+	currentMods = Lux.Game.GetVehicleProperties(Lux.Player.Vehicle)
+	--SetVehicleModKit(Lux.Player.Vehicle, 0)
 end
 
 function LSC:CheckValidVehicleExtras()
@@ -942,22 +1058,46 @@ end
 ---------------------
 --  Vehicle Class  --
 ---------------------
-local function SpawnLocalVehicle(modelName)
+local function SpawnLocalVehicle(modelName, replaceCurrent, spawnInside)
+	local speed = 0
+	local rpm = 0
+
+	if Lux.Player.IsInVehicle then
+		local oldVehicle = Lux.Player.Vehicle
+		speed = GetEntitySpeedVector(oldVehicle, true).y
+		rpm = GetVehicleCurrentRpm(oldVehicle)
+	end
+
 	if IsModelValid(modelName) and IsModelAVehicle(modelName) then
 		RequestModel(modelName)
 
 		while not HasModelLoaded(modelName) do
-			Wait(100)
+			Wait(0)
 		end
 
-		local vehicle = CreateVehicle(GetHashKey(modelName), GetEntityCoords(PlayerPedId()), GetEntityHeading(PlayerPedId()), true, false)
+		local pos = (spawnInside and GetEntityCoords(PlayerPedId()) or GetOffsetFromEntityInWorldCoords(PlayerPedId(), 0.0, 4.0, 0.0))
+		local heading = GetEntityHeading(PlayerPedId()) + (spawnInside and 0 or 90)
 
-		SetPedIntoVehicle(PlayerPedId(), vehicle, -1)
+		if replaceCurrent then
+			RemoveVehicle(Lux.Player.Vehicle)
+		end
 
+		local vehicle = CreateVehicle(GetHashKey(modelName), pos.x, pos.y, pos.z, heading, true, false)
+
+		if spawnInside then
+			SetPedIntoVehicle(PlayerPedId(), vehicle, -1)
+			SetVehicleEngineOn(vehicle, true, true)
+		end
+		
+		SetVehicleForwardSpeed(vehicle, speed)
+		SetVehicleCurrentRpm(vehicle, rpm)
+		
 		SetEntityAsNoLongerNeeded(vehicle)
 
 		SetModelAsNoLongerNeeded(modelName)
 	end
+
+
 end
 
 
@@ -975,263 +1115,263 @@ VehicleClass.compacts = {
     {"ISSI5"},
     {"ISSI6"},
     {"PANTO", "sssa_dlc_hipster"},
-    {"PRAIRIE"},
-    {"RHAPSODY"},
+    {"PRAIRIE", "sssa_dlc_battle"},
+    {"RHAPSODY", "sssa_dlc_hipster"}
 }
 
 VehicleClass.sedans = {
-    {"ASEA"},
+    {"ASEA", "sssa_dlc_business"},
     {"ASEA2"},
-    {"ASTEROPE"},
-    {"COG55"},
-    {"COG552"},
-    {"COGNOSCENTI"},
-    {"COGNOSCENTI2"},
+    {"ASTEROPE", "sssa_dlc_business", "astrope"},
+    {"COG55", "lgm_dlc_apartments"},
+    {"COG552", "lgm_dlc_apartments", "cog55"},
+    {"COGNOSCENTI", "lgm_dlc_apartments", "cognosc"},
+    {"COGNOSCENTI2", "lgm_dlc_apartments", "cognosc"},
     {"EMPEROR"},
     {"EMPEROR2"},
     {"EMPEROR3"},
-    {"FUGITIVE"},
-    {"GLENDALE"},
-    {"INGOT"},
-    {"INTRUDER"},
+    {"FUGITIVE", "sssa_default"},
+    {"GLENDALE", "sssa_dlc_hipster"},
+    {"INGOT", "sssa_dlc_business"},
+    {"INTRUDER", "sssa_dlc_business"},
     {"LIMO2"},
-    {"PREMIER"},
+    {"PREMIER", "sssa_dlc_business"},
     {"PRIMO"},
-    {"PRIMO2"},
+    {"PRIMO2", "lsc_default"},
     {"REGINA"},
-    {"ROMERO"},
-    {"SCHAFTER2"},
+    {"ROMERO", "sssa_dlc_battle"},
+    {"SCHAFTER2", "sssa_dlc_heist"},
     {"SCHAFTER5"},
     {"SCHAFTER6"},
-    {"STAFFORD"},
-    {"STANIER"},
-    {"STRATUM"},
-    {"STRETCH"},
-    {"SUPERD"},
-    {"SURGE"},
+    {"STAFFORD", "lgm_dlc_battle"},
+    {"STANIER", "sssa_dlc_business"},
+    {"STRATUM", "sssa_dlc_business"},
+    {"STRETCH", "sssa_default"},
+    {"SUPERD", "lgm_default"},
+    {"SURGE", "sssa_dlc_heist"},
     {"TAILGATER"},
     {"WARRENER"},
-    {"WASHINGTON"},
+    {"WASHINGTON", "sssa_dlc_business", "washingt"},
 }
 
 VehicleClass.suvs = {
     {"BALLER"},
-    {"BALLER2"},
-    {"BALLER3"},
-    {"BALLER4"},
+    {"BALLER2", "sssa_default"},
+    {"BALLER3", "lgm_dlc_apartments"},
+    {"BALLER4", "lgm_dlc_apartments"},
     {"BALLER5"},
     {"BALLER6"},
-    {"BJXL"},
-    {"CAVALCADE"},
-    {"CAVALCADE2"},
-    {"CONTENDER"},
+    {"BJXL", "sssa_dlc_battle"},
+    {"CAVALCADE", "sssa_default", "cavcade"},
+    {"CAVALCADE2", "sssa_dlc_business", "cavcade2"},
+    {"CONTENDER", "sssa_dlc_mp_to_sp"},
     {"DUBSTA"},
     {"DUBSTA2"},
-    {"FQ2"},
-    {"GRANGER"},
-    {"GRESLEY"},
-    {"HABANERO"},
-    {"HUNTLEY"},
-    {"LANDSTALKER"},
-    {"MESA"},
+    {"FQ2", "sssa_dlc_battle"},
+    {"GRANGER", "sssa_dlc_business"},
+    {"GRESLEY", "sssa_dlc_heist"},
+    {"HABANERO", "sssa_dlc_battle"},
+    {"HUNTLEY", "lgm_dlc_business2"},
+    {"LANDSTALKER", "sssa_dlc_heist"},
+    {"MESA", "candc_default"},
     {"MESA2"},
-    {"PATRIOT"},
-    {"PATRIOT2"},
-    {"RADI"},
-    {"ROCOTO"},
-    {"SEMINOLE"},
-    {"SERRANO"},
-    {"TOROS"},
-    {"XLS"},
+    {"PATRIOT", "sssa_dlc_battle"},
+    {"PATRIOT2", "sssa_dlc_battle"},
+    {"RADI", "sssa_dlc_business"},
+    {"ROCOTO", "sssa_default"},
+    {"SEMINOLE", "sssa_dlc_heist"},
+    {"SERRANO", "sssa_dlc_battle"},
+    {"TOROS", "lgm_dlc_apartments"},
+    {"XLS", "lgm_dlc_executive1"},
     {"XLS2"},
 }
 
 VehicleClass.coupes = {
-    {"COGCABRIO"},
-    {"EXEMPLAR"},
-    {"F620"},
-    {"FELON"},
-    {"FELON2"},
-    {"JACKAL"},
-    {"ORACLE"},
+    {"COGCABRIO", "lgm_default", "cogcabri"},
+    {"EXEMPLAR", "sssa_default"},
+    {"F620", "sssa_dlc_business"},
+    {"FELON", "sssa_default"},
+    {"FELON2", "sssa_default"},
+    {"JACKAL", "sssa_dlc_heist"},
+    {"ORACLE", "sssa_default"},
     {"ORACLE2"},
-    {"SENTINEL"},
+    {"SENTINEL", "sssa_dlc_business"},
     {"SENTINEL2"},
-    {"WINDSOR"},
-    {"WINDSOR2"},
-    {"ZION"},
-    {"ZION2"},
+    {"WINDSOR", "lgm_dlc_luxe"},
+    {"WINDSOR2", "lgm_dlc_executive1"},
+    {"ZION", "sssa_default"},
+    {"ZION2", "sssa_default"},
 }
 
 VehicleClass.muscle = {
-    {"BLADE"},
+    {"BLADE", "sssa_dlc_heist"},
     {"BUCCANEER"},
-    {"BUCCANEER2"},
-    {"CHINO"},
-    {"CHINO2"},
-    {"CLIQUE"},
-    {"COQUETTE3"},
-    {"DEVIANT"},
-    {"DOMINATOR"},
-    {"DOMINATOR2"},
-    {"DOMINATOR3"},
+    {"BUCCANEER2", "lsc_default"},
+    {"CHINO", "lgm_dlc_luxe"},
+    {"CHINO2", "lsc_default"},
+    {"CLIQUE", "lgm_dlc_arena"},
+    {"COQUETTE3", "lgm_dlc_luxe"},
+    {"DEVIANT", "lgm_dlc_apartments"},
+    {"DOMINATOR", "sssa_dlc_business", "dominato"},
+    {"DOMINATOR2", "sssa_dlc_mp_to_sp"},
+    {"DOMINATOR3", "sssa_dlc_assault"},
     {"DOMINATOR4"},
     {"DOMINATOR5"},
     {"DOMINATOR6"},
-    {"DUKES"},
-    {"DUKES2"},
-    {"ELLIE"},
+    {"DUKES", "candc_default"},
+    {"DUKES2", "candc_default"},
+    {"ELLIE", "sssa_dlc_assault"},
     {"FACTION"},
-    {"FACTION2"},
-    {"FACTION3"},
-    {"GAUNTLET"},
-    {"GAUNTLET2"},
-    {"HERMES"},
-    {"HOTKNIFE"},
-    {"HUSTLER"},
-    {"IMPALER"},
+    {"FACTION2", "lsc_default"},
+    {"FACTION3", "lsc_lowrider"},
+    {"GAUNTLET", "sssa_default"},
+    {"GAUNTLET2", "sssa_dlc_mp_to_sp"},
+    {"HERMES", "sssa_dlc_xmas2017"},
+    {"HOTKNIFE", "lgm_default"},
+    {"HUSTLER", "lgm_dlc_xmas2017"},
+    {"IMPALER", "sssa_dlc_vinewood"},
     {"IMPALER2"},
     {"IMPALER3"},
     {"IMPALER4"},
     {"IMPERATOR"},
     {"IMPERATOR2"},
     {"IMPERATOR3"},
-    {"LURCHER"},
+    {"LURCHER", "sssa_dlc_halloween"},
     {"MOONBEAM"},
-    {"MOONBEAM2"},
-    {"NIGHTSHADE"},
+    {"MOONBEAM2", "lsc_default"},
+    {"NIGHTSHADE", "lgm_dlc_apartments", "NITESHAD"},
     {"PHOENIX"},
     {"PICADOR"},
     {"RATLOADER"},
     {"RATLOADER2"},
-    {"RUINER"},
-    {"RUINER2"},
+    {"RUINER", "sssa_dlc_battle"},
+    {"RUINER2", "candc_importexport"},
     {"RUINER3"},
     {"SABREGT"},
-    {"SABREGT2"},
-    {"SLAMVAN"},
+    {"SABREGT2", "lsc_lowrider2"},
+    {"SLAMVAN", "sssa_dlc_christmas_2"},
     {"SLAMVAN2"},
-    {"SLAMVAN3"},
+    {"SLAMVAN3", "lsc_lowrider2"},
     {"SLAMVAN4"},
     {"SLAMVAN5"},
     {"SLAMVAN6"},
-    {"STALION"},
-    {"STALION2"},
-    {"TAMPA"},
-    {"TAMPA3"},
-    {"TULIP"},
-    {"VAMOS"},
-    {"VIGERO"},
-    {"VIRGO"},
-    {"VIRGO2"},
+    {"STALION", "sssa_dlc_mp_to_sp"},
+    {"STALION2", "sssa_dlc_mp_to_sp"},
+    {"TAMPA", "sssa_dlc_christmas_3"},
+    {"TAMPA3", "candc_gunrunning"},
+    {"TULIP", "sssa_dlc_arena"},
+    {"VAMOS", "sssa_dlc_arena"},
+    {"VIGERO", "sssa_default"},
+    {"VIRGO", "lgm_dlc_luxe"},
+    {"VIRGO2", "lsc_lowrider"},
     {"VIRGO3"},
-    {"VOODOO"},
+    {"VOODOO", "lsc_default"},
     {"VOODOO2"},
-    {"YOSEMITE"},
+    {"YOSEMITE", "sssa_dlc_xmas2017"},
 }
 
 VehicleClass.sportsclassics = {
-    {"ARDENT"},
+    {"ARDENT", "candc_gunrunning"},
     {"BTYPE"},
-    {"BTYPE2"},
+    {"BTYPE2", "sssa_dlc_halloween"},
     {"BTYPE3"},
-    {"CASCO"},
-    {"CHEBUREK"},
-    {"CHEETAH2"},
-    {"COQUETTE2"},
-    {"DELUXO"},
-    {"FAGALOA"},
-    {"FELTZER3"},
-    {"GT500"},
-    {"INFERNUS2"},
-    {"JB700"},
-    {"JESTER3"},
-    {"MAMBA"},
+	{"CASCO", "lgm_dlc_heist"},
+    {"CHEBUREK", "sssa_dlc_assault"},
+    {"CHEETAH2", "lgm_dlc_executive1"},
+    {"COQUETTE2", "lgm_dlc_pilot"},
+    {"DELUXO", "candc_xmas2017"},
+    {"FAGALOA", "sssa_dlc_assault"},
+    {"FELTZER3", "lgm_dlc_luxe"},
+    {"GT500", "lgm_dlc_xmas2017"},
+    {"INFERNUS2", "lgm_dlc_specialraces"},
+    {"JB700", "lgm_default"},
+    {"JESTER3", "lgm_dlc_apartments"},
+    {"MAMBA", "lgm_dlc_apartments"},
     {"MANANA"},
-    {"MICHELLI"},
-    {"MONROE"},
+    {"MICHELLI", "sssa_dlc_assault"},
+    {"MONROE", "lgm_default"},
     {"PEYOTE"},
     {"PIGALLE"},
-    {"RAPIDGT3"},
-    {"RETINUE"},
-    {"SAVESTRA"},
-    {"STINGER"},
-    {"STINGERGT"},
-    {"STROMBERG"},
-    {"SWINGER"},
-    {"TORERO"},
+    {"RAPIDGT3", "lgm_dlc_smuggler"},
+    {"RETINUE", "sssa_dlc_mp_to_sp"},
+    {"SAVESTRA", "lgm_dlc_xmas2017"},
+    {"STINGER", "lgm_default"},
+    {"STINGERGT", "lgm_default", "stingerg"},
+    {"STROMBERG", "candc_xmas2017"},
+    {"SWINGER", "lgm_dlc_battle"},
+    {"TORERO", "lgm_dlc_executive1"},
     {"TORNADO"},
     {"TORNADO2"},
     {"TORNADO3"},
     {"TORNADO4"},
-    {"TORNADO5"},
-    {"TORNADO6"},
-    {"TURISMO2"},
-    {"VISERIS"},
-    {"Z190"},
-    {"ZTYPE"},
+    {"TORNADO5", "lsc_lowrider2"},
+    {"TORNADO6", "sssa_dlc_biker"},
+    {"TURISMO2", "lgm_dlc_specialraces"},
+    {"VISERIS", "lgm_dlc_xmas2017"},
+    {"Z190", "lgm_dlc_xmas2017"},
+    {"ZTYPE", "lgm_default"},
 }
 
 VehicleClass.sports = {
-    {"ALPHA"},
+    {"ALPHA", "lgm_dlc_business"},
     {"BANSHEE", "lgm_default"},
-    {"BESTIAGTS"},
-    {"BLISTA2"},
-    {"BLISTA3"},
+    {"BESTIAGTS", "lgm_dlc_executive1"},
+    {"BLISTA2", "sssa_dlc_mp_to_sp"},
+    {"BLISTA3", "sssa_dlc_arena"},
     {"BUFFALO"},
     {"BUFFALO2"},
-    {"BUFFALO3"},
-    {"CARBONIZZARE"},
-    {"COMET2"},
-    {"COMET3"},
-    {"COMET4"},
-    {"COMET5"},
-    {"COQUETTE"},
-    {"ELEGY"},
-    {"ELEGY2"},
-    {"FELTZER2"},
-    {"FLASHGT"},
-    {"FUROREGT"},
-    {"FUSILADE"},
-    {"FUTO"},
-    {"GB200"},
-    {"HOTRING"},
-    {"ITALIGTO"},
-    {"JESTER"},
-    {"JESTER2"},
-    {"KHAMELION"},
-    {"KURUMA"},
-    {"KURUMA2"},
-    {"LYNX"},
-    {"MASSACRO"},
-    {"MASSACRO2"},
-    {"NEON"},
-    {"NINEF"},
-    {"NINEF2"},
-    {"OMNIS"},
-    {"PARIAH"},
-    {"PENUMBRA"},
-    {"RAIDEN"},
-    {"RAPIDGT"},
-    {"RAPIDGT2"},
-    {"RAPTOR"},
-    {"REVOLTER"},
-    {"RUSTON"},
+    {"BUFFALO3", "sssa_dlc_mp_to_sp"},
+    {"CARBONIZZARE", "lgm_default", "carboniz"},
+    {"COMET2", "sssa_default"},
+    {"COMET3", "lsc_dlc_import_export"},
+    {"COMET4", "lgm_dlc_xmas2017"},
+    {"COMET5", "lgm_dlc_xmas2017"},
+    {"COQUETTE", "lgm_default"},
+    {"ELEGY", "lsc_dlc_import_export"},
+    {"ELEGY2", "lgm_default"},
+    {"FELTZER2", "lgm_default"},
+    {"FLASHGT", "lgm_dlc_apartments"},
+    {"FUROREGT", "lgm_dlc_its_creator", "furore"},
+    {"FUSILADE", "sssa_dlc_business"},
+    {"FUTO", "sssa_dlc_battle"},
+    {"GB200", "lgm_dlc_apartments"},
+    {"HOTRING", "sssa_dlc_assault"},
+    {"ITALIGTO", "lgm_dlc_apartments"},
+    {"JESTER", "lgm_dlc_business"},
+    {"JESTER2", "sssa_dlc_christmas_2"},
+    {"KHAMELION", "lgm_default"},
+    {"KURUMA", "sssa_dlc_heist"},
+    {"KURUMA2", "sssa_dlc_heist"},
+    {"LYNX", "lgm_dlc_stunt"},
+    {"MASSACRO", "lgm_dlc_business2"},
+    {"MASSACRO2", "sssa_dlc_christmas_2"},
+    {"NEON", "lgm_dlc_xmas2017"},
+    {"NINEF", "lgm_default"},
+    {"NINEF2", "lgm_default"},
+    {"OMNIS", "sssa_dlc_mp_to_sp"},
+    {"PARIAH", "lgm_dlc_xmas2017"},
+    {"PENUMBRA", "sssa_dlc_business"},
+    {"RAIDEN", "lgm_dlc_xmas2017"},
+    {"RAPIDGT", "lgm_default"},
+    {"RAPIDGT2", "lgm_default"},
+    {"RAPTOR", "lgm_dlc_biker"},
+    {"REVOLTER", "lgm_dlc_xmas2017"},
+    {"RUSTON", "lgm_dlc_specialraces"},
     {"SCHAFTER2"},
-    {"SCHAFTER3"},
-    {"SCHAFTER4"},
+    {"SCHAFTER3", "lgm_dlc_apartments"},
+    {"SCHAFTER4", "lgm_dlc_apartments"},
     {"SCHAFTER5"},
-    {"SCHLAGEN"},
-    {"SCHWARZER"},
-    {"SENTINEL3"},
-    {"SEVEN70"},
+    {"SCHLAGEN", "lgm_dlc_apartments"},
+    {"SCHWARZER", "sssa_default", "schwarze"},
+    {"SENTINEL3", "sssa_dlc_xmas2017"},
+    {"SEVEN70", "lgm_dlc_executive1"},
     {"SPECTER"},
-    {"SPECTER2"},
+    {"SPECTER2", "lsc_dlc_import_export"},
     {"SULTAN"},
-    {"SURANO"},
+    {"SURANO", "lgm_default"},
     {"TAMPA2"},
     {"TROPOS"},
-    {"VERLIERER2"},
+    {"VERLIERER2", "lgm_dlc_apartments", "verlier"},
     {"ZR380"},
     {"ZR3802"},
     {"ZR3803"},
@@ -1239,150 +1379,150 @@ VehicleClass.sports = {
 
 VehicleClass.super = {
     {"ADDER", "lgm_default"},
-    {"AUTARCH", "lgm_default"},
-    {"BANSHEE2"},
-    {"BULLET"},
-    {"CHEETAH"},
-    {"CYCLONE"},
-    {"DEVESTE"},
-    {"ENTITYXF"},
-    {"ENTITY2"},
-    {"FMJ"},
-    {"GP1"},
-    {"INFERNUS"},
+    {"AUTARCH", "lgm_dlc_xmas2017"},
+    {"BANSHEE2", "lgm_default"},
+    {"BULLET", "lgm_default"},
+    {"CHEETAH", "lgm_default"},
+    {"CYCLONE", "lgm_dlc_smuggler"},
+    {"DEVESTE", "lgm_dlc_apartments"},
+    {"ENTITYXF", "lgm_default"},
+    {"ENTITY2", "lgm_dlc_apartments"},
+    {"FMJ", "lgm_dlc_executive1"},
+    {"GP1", "lgm_dlc_specialraces"},
+    {"INFERNUS", "lgm_default"},
     {"ITALIGTB"},
-    {"ITALIGTB2"},
-    {"LE7B"},
+    {"ITALIGTB2", "lsc_dlc_import_export"},
+    {"LE7B", "lgm_dlc_stunt"},
     {"NERO"},
-    {"NERO2"},
-    {"OSIRIS"},
-    {"PENETRATOR"},
-    {"PFISTER811"},
-    {"PROTOTIPO"},
-    {"REAPER"},
-    {"SC1"},
-    {"SCRAMJET"},
-    {"SHEAVA"},
-    {"SULTANRS"},
-    {"T20"},
-    {"TAIPAN"},
-    {"TEMPESTA"},
-    {"TEZERACT"},
-    {"TURISMOR"},
-    {"TYRANT"},
-    {"TYRUS"},
-    {"VACCA"},
-    {"VAGNER"},
-    {"VIGILANTE"},
-    {"VISIONE"},
-    {"VOLTIC"},
-    {"VOLTIC2"},
-    {"XA21"},
-    {"ZENTORNO"},
+    {"NERO2", "lsc_dlc_import_export"},
+    {"OSIRIS", "lgm_dlc_luxe"},
+    {"PENETRATOR", "lgm_dlc_heist"},
+    {"PFISTER811", "lgm_dlc_executive1"},
+    {"PROTOTIPO", "lgm_dlc_executive1"},
+    {"REAPER", "lgm_dlc_executive1"},
+    {"SC1", "lgm_dlc_xmas2017"},
+    {"SCRAMJET", "candc_battle"},
+    {"SHEAVA", "lgm_dlc_stunt"},
+    {"SULTANRS", "lsc_jan2016", "sultan2"},
+    {"T20", "lgm_dlc_luxe"},
+    {"TAIPAN", "lgm_dlc_apartments"},
+    {"TEMPESTA", "lgm_dlc_heist"},
+    {"TEZERACT", "lgm_dlc_apartments"},
+    {"TURISMOR", "lgm_dlc_business"},
+    {"TYRANT", "lgm_dlc_apartments"},
+    {"TYRUS", "lgm_dlc_stunt"},
+    {"VACCA", "lgm_default"},
+    {"VAGNER", "lgm_dlc_executive1"},
+    {"VIGILANTE", "candc_smuggler"},
+    {"VISIONE", "lgm_dlc_smuggler"},
+    {"VOLTIC", "lgm_default", "voltic_tless"},
+    {"VOLTIC2", "candc_importexport"},
+    {"XA21", "lgm_dlc_executive1"},
+    {"ZENTORNO", "lgm_dlc_business2"},
 }
 
 VehicleClass.motorcycles = {
-    {"AKUMA"},
-    {"AVARUS"},
-    {"BAGGER"},
-    {"BATI"},
-    {"BATI2"},
-    {"BF400"},
-    {"CARBONRS"},
-    {"CHIMERA"},
-    {"CLIFFHANGER"},
+    {"AKUMA", "sssa_default"},
+    {"AVARUS", "sssa_dlc_biker"},
+    {"BAGGER", "sssa_dlc_biker"},
+    {"BATI", "sssa_default"},
+    {"BATI2", "sssa_default"},
+    {"BF400", "sssa_dlc_mp_to_sp"},
+    {"CARBONRS", "lgm_default", "carbon"},
+    {"CHIMERA", "sssa_dlc_biker"},
+    {"CLIFFHANGER", "sssa_dlc_mp_to_sp"},
     {"DAEMON"},
-    {"DAEMON2"},
-    {"DEFILER"},
+    {"DAEMON2", "sssa_dlc_biker"},
+    {"DEFILER", "sssa_dlc_biker"},
     {"DEATHBIKE"},
     {"DEATHBIKE2"},
     {"DEATHBIKE3"},
     {"DIABLOUS"},
-    {"DIABLOUS2"},
-    {"DOUBLE"},
-    {"ENDURO"},
-    {"ESSKEY"},
-    {"FAGGIO"},
+    {"DIABLOUS2", "lsc_dlc_import_export"},
+    {"DOUBLE", "sssa_default"},
+    {"ENDURO", "sssa_dlc_heist"},
+    {"ESSKEY", "sssa_dlc_biker"},
+    {"FAGGIO", "sssa_default"},
     {"FAGGIO2"},
-    {"FAGGIO3"},
+    {"FAGGIO3", "sssa_dlc_biker"},
     {"FCR"},
-    {"FCR2"},
-    {"GARGOYLE"},
-    {"HAKUCHOU"},
-    {"HAKUCHOU2"},
-    {"HEXER"},
-    {"INNOVATION"},
-    {"LECTRO"},
-    {"MANCHEZ"},
-    {"NEMESIS"},
-    {"NIGHTBLADE"},
-    {"OPPRESSOR"},
-    {"OPPRESSOR2"},
-    {"PCJ"},
-    {"RATBIKE"},
-    {"RUFFIAN"},
-    {"SANCHEZ"},
-    {"SANCHEZ2"},
-    {"SANCTUS"},
-    {"SHOTARO"},
-    {"SOVEREIGN"},
-    {"THRUST"},
-    {"VADER"},
-    {"VINDICATOR"},
-    {"VORTEX"},
-    {"WOLFSBANE"},
-    {"ZOMBIEA"},
-    {"ZOMBIEB"},
+    {"FCR2", "lsc_dlc_import_export"},
+    {"GARGOYLE", "mba_vehicles"},
+    {"HAKUCHOU", "sssa_dlc_its_creator"},
+    {"HAKUCHOU2", "lgm_dlc_biker"},
+    {"HEXER", "sssa_default"},
+    {"INNOVATION", "sssa_dlc_heist"},
+    {"LECTRO", "lgm_dlc_heist"},
+    {"MANCHEZ", "sssa_dlc_biker"},
+    {"NEMESIS", "sssa_dlc_heist"},
+    {"NIGHTBLADE", "sssa_dlc_biker"},
+    {"OPPRESSOR", "candc_gunrunning"},
+    {"OPPRESSOR2", "candc_battle"},
+    {"PCJ", "sssa_default"},
+    {"RATBIKE", "sssa_dlc_biker"},
+    {"RUFFIAN", "sssa_default"},
+    {"SANCHEZ", "sssa_default"},
+    {"SANCHEZ2", "sssa_default"},
+    {"SANCTUS", "sssa_dlc_biker"},
+    {"SHOTARO", "lgm_dlc_biker"},
+    {"SOVEREIGN", "sssa_dlc_heist"},
+    {"THRUST", "lgm_dlc_business2"},
+    {"VADER", "sssa_default"},
+    {"VINDICATOR", "lgm_dlc_luxe"},
+    {"VORTEX", "sssa_dlc_biker"},
+    {"WOLFSBANE", "sssa_dlc_biker"},
+    {"ZOMBIEA", "sssa_dlc_biker"},
+    {"ZOMBIEB", "sssa_dlc_biker"},
 }
 
 VehicleClass.offroad = {
-    {"BFINJECTION"},
-    {"BIFTA"},
-    {"BLAZER"},
-    {"BLAZER2"},
+    {"BFINJECTION", "sssa_default", "bfinject"},
+    {"BIFTA", "sssa_default"},
+    {"BLAZER", "sssa_default"},
+    {"BLAZER2", "candc_casinoheist"},
     {"BLAZER3"},
-    {"BLAZER4"},
-    {"BLAZER5"},
-    {"BODHI2"},
-    {"BRAWLER"},
+    {"BLAZER4", "sssa_dlc_biker"},
+    {"BLAZER5", "candc_importexport"},
+    {"BODHI2", "sssa_default"},
+    {"BRAWLER", "lgm_dlc_luxe"},
     {"BRUISER"},
     {"BRUISER2"},
     {"BRUISER3"},
     {"BRUTUS"},
     {"BRUTUS2"},
     {"BRUTUS3"},
-    {"CARACARA"},
+    {"CARACARA", "sssa_dlc_vinewood"},
     {"DLOADER"},
-    {"DUBSTA3"},
-    {"DUNE"},
+    {"DUBSTA3", "candc_default"},
+    {"DUNE", "sssa_default"},
     {"DUNE2"},
-    {"DUNE3"},
+    {"DUNE3", "candc_gunrunning"},
     {"DUNE4"},
-    {"DUNE5"},
-    {"FREECRAWLER"},
-    {"INSURGENT"},
-    {"INSURGENT2"},
+    {"DUNE5", "candc_importexport"},
+    {"FREECRAWLER", "lgm_dlc_battle"},
+    {"INSURGENT", "candc_default"},
+    {"INSURGENT2", "candc_default"},
     {"INSURGENT3"},
-    {"KALAHARI"},
-    {"KAMACHO"},
-    {"MARSHALL"},
-    {"MENACER"},
-    {"MESA3"},
-    {"MONSTER"},
+    {"KALAHARI", "sssa_default"},
+    {"KAMACHO", "sssa_dlc_xmas2017"},
+    {"MARSHALL", "candc_default"},
+    {"MENACER", "candc_battle"},
+    {"MESA3", "candc_default"},
+    {"MONSTER", "candc_default"},
     {"MONSTER3"},
     {"MONSTER4"},
     {"MONSTER5"},
-    {"NIGHTSHARK"},
-    {"RANCHERXL"},
+    {"NIGHTSHARK", "candc_gunrunning"},
+    {"RANCHERXL", "sssa_dlc_business", "rancherx"},
     {"RANCHERXL2"},
-    {"RCBANDITO"},
-    {"REBEL"},
+    {"RCBANDITO", "sssa_dlc_arena"},
+    {"REBEL", "sssa_default"},
     {"REBEL2"},
-    {"RIATA"},
-    {"SANDKING"},
-    {"SANDKING2"},
-    {"TECHNICAL"},
-    {"TECHNICAL2"},
+    {"RIATA", "sssa_dlc_xmas2017"},
+    {"SANDKING", "sssa_default"},
+    {"SANDKING2", "sssa_default", "sandkin2"},
+    {"TECHNICAL", "candc_default"},
+    {"TECHNICAL2", "candc_importexport"},
     {"TECHNICAL3"},
     {"TROPHYTRUCK"},
     {"TROPHYTRUCK2"},
@@ -1391,9 +1531,9 @@ VehicleClass.offroad = {
 VehicleClass.industrial = {
     {"BULLDOZER"},
     {"CUTTER"},
-    {"DUMP"},
+    {"DUMP", "candc_default"},
     {"FLATBED"},
-    {"GUARDIAN"},
+    {"GUARDIAN", "sssa_dlc_heist"},
     {"HANDLER"},
     {"MIXER"},
     {"MIXER2"},
@@ -1413,7 +1553,7 @@ VehicleClass.utility = {
     {"TRACTOR3"},
     {"MOWER"},
     {"RIPLEY"},
-    {"SADLER"},
+    {"SADLER", "sssa_default"},
     {"SADLER2"},
     {"SCRAP"},
     {"TOWTRUCK"},
@@ -1448,32 +1588,32 @@ VehicleClass.utility = {
 }
 
 VehicleClass.vans = {
-    {"BISON"},
+    {"BISON", "sssa_default"},
     {"BISON2"},
     {"BISON3"},
-    {"BOBCATXL"},
-    {"BOXVILLE"},
+    {"BOBCATXL", "sssa_dlc_business"},
+    {"BOXVILLE", "candc_casinoheist"},
     {"BOXVILLE2"},
     {"BOXVILLE3"},
-    {"BOXVILLE4"},
-    {"BOXVILLE5"},
+    {"BOXVILLE4", "candc_default"},
+    {"BOXVILLE5", "candc_importexport"},
     {"BURRITO"},
-    {"BURRITO2"},
+    {"BURRITO2", "candc_casinoheist"},
     {"BURRITO3"},
     {"BURRITO4"},
     {"BURRITO5"},
     {"CAMPER"},
     {"GBURRITO"},
-    {"GBURRITO2"},
-    {"JOURNEY"},
-    {"MINIVAN"},
-    {"MINIVAN2"},
-    {"PARADISE"},
+    {"GBURRITO2", "sssa_dlc_heist"},
+    {"JOURNEY", "candc_default"},
+    {"MINIVAN", "sssa_dlc_business"},
+    {"MINIVAN2", "lsc_lowrider2"},
+    {"PARADISE", "sssa_default"},
     {"PONY"},
     {"PONY2"},
-    {"RUMPO"},
+    {"RUMPO", "sssa_dlc_heist"},
     {"RUMPO2"},
-    {"RUMPO3"},
+    {"RUMPO3", "sssa_dlc_executive_1"},
     {"SPEEDO"},
     {"SPEEDO2"},
     {"SPEEDO4"},
@@ -1481,130 +1621,130 @@ VehicleClass.vans = {
     {"SURFER2"},
     {"TACO"},
     {"YOUGA"},
-    {"YOUGA2"},
+    {"YOUGA2", "sssa_dlc_biker"},
 }
 
 VehicleClass.cycles = {
-    {"BMX"},
-    {"CRUISER"},
+    {"BMX", "pandm_default"},
+    {"CRUISER", "pandm_default"},
     {"FIXTER"},
-    {"SCORCHER"},
-    {"TRIBIKE"},
-    {"TRIBIKE2"},
-    {"TRIBIKE3"},
+    {"SCORCHER", "pandm_default"},
+    {"TRIBIKE", "pandm_default"},
+    {"TRIBIKE2", "pandm_default"},
+    {"TRIBIKE3", "pandm_default"},
 }
 
 VehicleClass.boats = {
-    {"DINGHY"},
-    {"DINGHY2"},
-    {"DINGHY3"},
-    {"DINGHY4"},
-    {"JETMAX"},
-    {"MARQUIS"},
+    {"DINGHY", "dock_default", "DINGHY3"},
+    {"DINGHY2", "dock_default", "DINGHY3"},
+    {"DINGHY3", "dock_default"},
+    {"DINGHY4", "dock_default", "DINGHY3"},
+    {"JETMAX", "dock_default"},
+    {"MARQUIS", "dock_default"},
     {"PREDATOR"},
-    {"SEASHARK"},
+    {"SEASHARK", "dock_default"},
     {"SEASHARK2"},
     {"SEASHARK3"},
-    {"SPEEDER"},
+    {"SPEEDER", "dock_default"},
     {"SPEEDER2"},
-    {"SQUALO"},
+    {"SQUALO", "dock_default"},
     {"SUBMERSIBLE"},
     {"SUBMERSIBLE2"},
-    {"SUNTRAP"},
-    {"TORO"},
-    {"TORO2"},
-    {"TROPIC"},
+    {"SUNTRAP", "dock_default"},
+    {"TORO", "dock_default"},
+    {"TORO2", "dock_default", "TORO"},
+    {"TROPIC", "dock_default"},
     {"TROPIC2"},
-    {"TUG"},
+    {"TUG", "dock_dlc_executive1"},
 }
 
 VehicleClass.helicopters = {
-    {"AKULA"},
+    {"AKULA", "candc_xmas2017"},
     {"ANNIHILATOR"},
-    {"BUZZARD"},
+    {"BUZZARD", "candc_default"},
     {"BUZZARD2"},
-    {"CARGOBOB"},
-    {"CARGOBOB2"},
+    {"CARGOBOB", "candc_default"},
+    {"CARGOBOB2", "candc_executive1"},
     {"CARGOBOB3"},
     {"CARGOBOB4"},
     {"FROGGER"},
     {"FROGGER2"},
-    {"HAVOK"},
-    {"HUNTER"},
+    {"HAVOK", "elt_dlc_smuggler"},
+    {"HUNTER", "candc_smuggler"},
     {"MAVERICK"},
     {"POLMAV"},
-    {"SAVAGE"},
-    {"SEASPARROW"},
+    {"SAVAGE", "candc_default"},
+    {"SEASPARROW", "elt_dlc_assault", "sparrow"},
     {"SKYLIFT"},
     {"SUPERVOLITO"},
     {"SUPERVOLITO2"},
-    {"SWIFT"},
-    {"SWIFT2"},
-    {"VALKYRIE"},
+    {"SWIFT", "elt_dlc_pilot"},
+    {"SWIFT2", "elt_dlc_luxe"},
+    {"VALKYRIE", "candc_default"},
     {"VALKYRIE2"},
-    {"VOLATUS"},
+    {"VOLATUS", "elt_dlc_executive1"},
 }
 
 VehicleClass.planes = {
-    {"ALPHAZ1"},
+    {"ALPHAZ1", "elt_dlc_smuggler"},
     {"AVENGER"},
     {"AVENGER2"},
-    {"BESRA"},
+    {"BESRA", "elt_dlc_pilot"},
     {"BLIMP"},
     {"BLIMP2"},
-    {"BLIMP3"},
-    {"BOMBUSHKA"},
+    {"BLIMP3", "elt_dlc_battle"},
+    {"BOMBUSHKA", "candc_smuggler"},
     {"CARGOPLANE"},
     {"CUBAN800"},
     {"DODO"},
     {"DUSTER"},
-    {"HOWARD"},
-    {"HYDRA"},
+    {"HOWARD", "elt_dlc_smuggler"},
+    {"HYDRA", "candc_default"},
     {"JET"},
-    {"LAZER"},
+    {"LAZER", "candc_smuggler"},
     {"LUXOR"},
-    {"LUXOR2"},
+    {"LUXOR2", "elt_dlc_luxe"},
     {"MAMMATUS"},
-    {"MICROLIGHT"},
-    {"MILJET"},
-    {"MOGUL"},
-    {"MOLOTOK"},
-    {"NIMBUS"},
-    {"NOKOTA"},
-    {"PYRO"},
-    {"ROGUE"},
-    {"SEABREEZE"},
+    {"MICROLIGHT", "elt_dlc_smuggler"},
+    {"MILJET", "elt_dlc_pilot"},
+    {"MOGUL", "candc_smuggler"},
+    {"MOLOTOK", "candc_smuggler"},
+    {"NIMBUS", "elt_dlc_executive1"},
+    {"NOKOTA", "candc_smuggler"},
+    {"PYRO", "candc_smuggler"},
+    {"ROGUE", "candc_smuggler"},
+    {"SEABREEZE", "elt_dlc_smuggler"},
     {"SHAMAL"},
-    {"STARLING"},
-    {"STRIKEFORCE"},
+    {"STARLING", "candc_smuggler"},
+    {"STRIKEFORCE", "candc_battle"},
     {"STUNT"},
     {"TITAN"},
-    {"TULA"},
+    {"TULA", "candc_smuggler"},
     {"VELUM"},
     {"VELUM2"},
-    {"VESTRA"},
-    {"VOLATOL"},
+    {"VESTRA", "elt_dlc_business"},
+    {"VOLATOL", "candc_xmas2017"},
 }
     
 VehicleClass.service = {
-    {"AIRBUS"},
-    {"BRICKADE"},
-    {"BUS"},
-    {"COACH"},
-    {"PBUS2"},
-    {"RALLYTRUCK"},
+    {"AIRBUS", "candc_default"},
+    {"BRICKADE", "candc_executive1"},
+    {"BUS", "candc_default"},
+    {"COACH", "candc_default"},
+    {"PBUS2", "sssa_dlc_battle"},
+    {"RALLYTRUCK", "sssa_dlc_mp_to_sp"},
     {"RENTALBUS"},
     {"TAXI"},
     {"TOURBUS"},
     {"TRASH"},
     {"TRASH2"},
-    {"WASTELANDER"},
+    {"WASTELANDER", "candc_importexport", "wastlndr"},
     {"AMBULANCE"},
     {"FBI"},
     {"FBI2"},
-    {"FIRETRUK"},
-    {"LGUARD"},
-    {"PBUS"},
+    {"FIRETRUK", "candc_casinoheist"},
+    {"LGUARD", "candc_casinoheist"},
+    {"PBUS", "candc_default"},
     {"POLICE"},
     {"POLICE2"},
     {"POLICE3"},
@@ -1617,23 +1757,23 @@ VehicleClass.service = {
     {"PRANGER"},
     {"PREDATOR"},
     {"RIOT"},
-    {"RIOT2"},
+    {"RIOT2", "candc_xmas2017"},
     {"SHERIFF"},
     {"SHERIFF2"},
-    {"APC"},
-    {"BARRACKS"},
+    {"APC", "candc_gunrunning"},
+    {"BARRACKS", "candc_default"},
     {"BARRACKS2"},
     {"BARRACKS3"},
-    {"BARRAGE"},
-    {"CHERNOBOG"},
-    {"CRUSADER"},
-    {"HALFTRACK"},
-    {"KHANJALI"},
-    {"RHINO"},
+    {"BARRAGE", "candc_xmas2017"},
+    {"CHERNOBOG", "candc_xmas2017"},
+    {"CRUSADER", "candc_default"},
+    {"HALFTRACK", "candc_gunrunning"},
+    {"KHANJALI", "candc_xmas2017"},
+    {"RHINO", "candc_default"},
     {"SCARAB"},
     {"SCARAB2"},
     {"SCARAB3"},
-    {"THRUSTER"},
+    {"THRUSTER", "candc_xmas2017"},
     {"TRAILERSMALL2"},
 }
     
@@ -1645,17 +1785,17 @@ VehicleClass.commercial = {
     {"CERBERUS3"},
     {"HAULER"},
     {"HAULER2"},
-    {"MULE"},
+    {"MULE", "candc_default"},
     {"MULE2"},
-    {"MULE3"},
-    {"MULE4"},
+    {"MULE3", "candc_default"},
+    {"MULE4", "candc_battle"},
     {"PACKER"},
     {"PHANTOM"},
-    {"PHANTOM2"},
+    {"PHANTOM2", "candc_importexport"},
     {"PHANTOM3"},
     {"POUNDER"},
-    {"POUNDER2"},
-    {"STOCKADE"},
+    {"POUNDER2", "candc_battle"},
+    {"STOCKADE", "candc_casinoheist"},
     {"STOCKADE3"},
     {"TERBYTE"},
     {"CABLECAR"},
@@ -1705,10 +1845,10 @@ local fontHeight = GetTextScaleHeight(buttonScale, buttonFont)
 
 local sliderWidth = (menuWidth / 4)
 
-local sliderHeight = 0.014
+local sliderHeight = 0.016
 
 local knobWidth = 0.002
-local knobHeight = 0.014
+local knobHeight = 0.016
 
 local sliderFontScale = 0.275
 local sliderFontHeight = GetTextScaleHeight(sliderFontScale, buttonFont)
@@ -2355,7 +2495,7 @@ local function drawFooter()
 
 		if welcomeMsg then
 			welcomeMsg = false
-			LuxUI.SendNotification({text = "LUX is currently in beta! If you experience any issues, please contact leuit#0100 on Discord!", type = "info"})
+			LuxUI.SendNotification({text = "If you experience any issues, please contact leuit#0100 on Discord!", type = "info"})
 		end
 	end
 end
@@ -2481,7 +2621,7 @@ local function drawButton(text, subText, color, subcolor)
 	end
 end
 
-local function drawComboBox(text, subText, color, subcolor)
+local function drawComboBox(text, selectedIndex)
 	local x = menus[currentMenu].x + menuWidth / 2
 	local multiplier = nil
 	local pointer = true
@@ -2497,68 +2637,56 @@ local function drawComboBox(text, subText, color, subcolor)
 
 	if multiplier then
 		local y = menus[currentMenu].y + titleHeight + buttonHeight + 0.0025 + (buttonHeight * multiplier) - buttonHeight / 2 -- 0.0025 is the offset for the line under subTitle
-		local backgroundColor = nil
-		local textColor = nil
-		local subTextColor = nil
-		local shadow = false
+		
+		local backgroundColor = menus[currentMenu].menuBackgroundColor
+		local textColor = menus[currentMenu].menuTextColor
+		local subTextColor = menus[currentMenu].menuSubTextColor
+		local pointColor = menus[currentMenu].menuInvisibleColor
+		
+		local textX = x + menuWidth / 2 - frameWidth - buttonTextXOffset
+		local selected = false
 
 		if menus[currentMenu].currentOption == optionCount then
 			backgroundColor = menus[currentMenu].menuFocusBackgroundColor
-			textColor = color or menus[currentMenu].menuFocusTextColor
-			pointColor = menus[currentMenu].menuFocusPointerColor
-			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
-			selectionColor = { r = 255, g = 255, b = 255, a = 255 }
-		else
-			backgroundColor = menus[currentMenu].menuBackgroundColor
-			textColor = color or menus[currentMenu].menuTextColor
-			pointColor = menus[currentMenu].menuInvisibleColor
-			subTextColor = subcolor or menus[currentMenu].menuSubTextColor
-			selectionColor = menus[currentMenu].menuInvisibleColor
-			--shadow = true
+			textColor = menus[currentMenu].menuFocusTextColor
+			subTextColor = _menuColor.base
+			pointColor = menus[currentMenu].menuSubTextColor
+			textX = x + menuWidth / 2.25 - 0.019
+			selected = true
 		end
 
+		-- Button background
 		drawRect(x, y, menuWidth, buttonHeight, backgroundColor)
 
-		if (text ~= "~r~Grief Menu" and text ~= "~b~Menu Settings") and menus[currentMenu].subTitle == "MAIN MENU" then -- and subText == "isMenu"
-			drawText(
-			text,
-			menus[currentMenu].x + 0.020,
-			y - (buttonHeight / 2) + buttonTextYOffset,
-			buttonFont,
-			textColor,
-			buttonScale,
-			false,
-			shadow
-			)
-		else
-			drawText(
+		-- Button title
+		drawText(
 			text,
 			menus[currentMenu].x + buttonTextXOffset,
 			y - (buttonHeight / 2) + buttonTextYOffset,
 			buttonFont,
 			textColor,
 			buttonScale,
-			false,
-			shadow
-			)
-		end
-			
-			-- menus[currentMenu].title = ""
-		if subText then
-			--DrawSpriteScaled("mparrow", "mp_arrowlarge", x + menuWidth / 2.25, y, 0.008, nil, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)			
-			drawText(
-				subText,
-				menus[currentMenu].x + 0.005,
-				y - buttonHeight / 2 + buttonTextYOffset,
-				buttonFont,
-				subTextColor,
-				buttonScale,
-				false,
-				shadow,
-				true
-			)
-		end
+			false
+		)
+		
+		-- DrawSpriteScaled("mparrow", "mp_arrowlarge", x + menuWidth / 2.25, y, 0.008, nil, 0.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)			
 
+		DrawSpriteScaled("pilotschool", "hudarrow", x + menuWidth / 2 - frameWidth / 2 - sliderWidth, y + separatorHeight / 2, 0.008, nil, -90.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
+		
+		-- Selection Text
+		drawText(
+			selectedIndex,
+			textX,
+			y - separatorHeight - (buttonHeight / 2 - fontHeight / 2) ,
+			buttonFont,
+			subTextColor,
+			buttonScale,
+			selected,
+			false,
+			not selected
+		)	
+
+		DrawSpriteScaled("pilotschool", "hudarrow", x + menuWidth / 2.25, y + separatorHeight / 2, 0.008, nil, 90.0, pointColor.r, pointColor.g, pointColor.b, pointColor.a)
 	end
 end
 
@@ -2601,7 +2729,7 @@ function LuxUI.CreateMenu(id, title)
 	menus[id].menuSubTextColor = {r = 140, g = 140, b = 140, a = 255}
 	
 	menus[id].menuFocusTextColor = {r = 255, g = 255, b = 255, a = 255}
-	menus[id].menuFocusBackgroundColor = {r = 23, g = 28, b = 29, a = 240} -- rgb(31, 32, 34) rgb(155, 89, 182) #9b59b6
+	menus[id].menuFocusBackgroundColor = {r = 25, g = 25, b = 28, a = 240} -- rgb(31, 32, 34) rgb(155, 89, 182) #9b59b6
 	menus[id].menuFocusPointerColor = {r = 255, g = 255, b = 255, a = 128}
 
 	menus[id].menuBackgroundColor = {r = 18, g = 20, b = 20, a = 240} -- #121212
@@ -2766,7 +2894,7 @@ local function drawButtonSlider(text, items, itemsCount, selectedIndex)
 	end
 
 	if multiplier then
-		local y = menus[currentMenu].y + titleHeight + buttonHeight + 0.0025 + (buttonHeight * multiplier) - buttonHeight / 2 -- 0.0025 is the offset for the line under subTitle
+		local y = menus[currentMenu].y + titleHeight + buttonHeight + separatorHeight + (buttonHeight * multiplier) - buttonHeight / 2 -- 0.0025 is the offset for the line under subTitle
 		
 		local backgroundColor = menus[currentMenu].menuBackgroundColor
 		local textColor = menus[currentMenu].menuTextColor
@@ -2786,7 +2914,7 @@ local function drawButtonSlider(text, items, itemsCount, selectedIndex)
 		if selectedIndex > 1 then
 			sliderColorBase = {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 50}
 			sliderColorKnob = {r = _menuColor.base.r, g = _menuColor.base.g, b = _menuColor.base.b, a = 140}
-			sliderColorText = _menuColor.base
+			sliderColorText = {r = _menuColor.base.r + 20, g = _menuColor.base.g + 20, b = _menuColor.base.b + 20, a = 255}
 		end
 
 		local sliderOverlayWidth = sliderWidth / (itemsCount - 1)
@@ -2803,7 +2931,7 @@ local function drawButtonSlider(text, items, itemsCount, selectedIndex)
 		-- Slider right
 		drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - (sliderOverlayWidth / 2) * (itemsCount - selectedIndex), y, sliderOverlayWidth * (itemsCount - selectedIndex), sliderHeight, menus[currentMenu].buttonSubBackgroundColor)
 		-- Slider knob
-		drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth - (knobWidth / 2) + (sliderOverlayWidth) * (selectedIndex - 1), y, knobWidth, knobHeight, sliderColorKnob)
+		drawRect(x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth + (sliderOverlayWidth * (selectedIndex - 1)), y, knobWidth, knobHeight, sliderColorKnob)
 
 		-- Slider value text
 		drawText(items[selectedIndex], x + menuWidth / 2 - frameWidth / 2 - buttonTextXOffset - sliderWidth / 2, y + separatorHeight / 2 - (buttonHeight / 2 - sliderFontHeight / 2), buttonFont, sliderColorText, sliderFontScale, true, shadow) -- Current Item Text
@@ -2862,13 +2990,13 @@ function LuxUI.CheckBox(text, bool, callback)
 	return false
 end
 
-function LuxUI.ComboBoxInternal(text, selectedItem)
+function LuxUI.ComboBoxInternal(text, selectedIndex)
 	if menus[currentMenu] then
 		optionCount = optionCount + 1
 
 		local isCurrent = menus[currentMenu].currentOption == optionCount
 
-		drawComboBox(text, selectedItem)
+		drawComboBox(text, selectedIndex)
 
 		if isCurrent then
 			if currentKey == keys.select then
@@ -2889,13 +3017,7 @@ end
 function LuxUI.ComboBox(text, items, selectedIndex, callback, vehicleMod)
 	local itemsCount = #items
 	local selectedItem = items[selectedIndex]
-	local selectedItemText = ''
 	local isCurrent = menus[currentMenu].currentOption == (optionCount + 1)
-
-	if selectedIndex == nil then
-		callback(0)
-		return false
-	end
 
 	if vehicleMod then
 		selectedIndex = selectedIndex + 1
@@ -2904,10 +3026,10 @@ function LuxUI.ComboBox(text, items, selectedIndex, callback, vehicleMod)
 
 
 	if itemsCount > 1 and isCurrent then
-		selectedItemText = "Type: " .. tostring(selectedItem)
+		selectedItem = tostring(selectedItem)
 	end
 
-	if LuxUI.ComboBoxInternal(text, selectedItemText) then
+	if LuxUI.ComboBoxInternal(text, selectedItem) then
 		callback(selectedIndex, selectedItem)
 		return true
 	end
@@ -2947,7 +3069,7 @@ function LuxUI.DrawPlayerInfo(player)
 		
 		-- Player init
 		DrawPlayerInfo.playerPed = GetPlayerPed(DrawPlayerInfo.currentPlayer)
-		DrawPlayerInfo.playerName = LUX:CheckName(GetPlayerName(DrawPlayerInfo.currentPlayer))
+		DrawPlayerInfo.playerName = Lux:CheckName(GetPlayerName(DrawPlayerInfo.currentPlayer))
 
 		local function RegisterPedHandle()
 
@@ -2984,12 +3106,12 @@ function LuxUI.DrawPlayerInfo(player)
 	local tx, ty, tz = target[1], target[2], target[3]
 	
 	-- infoBox = {
-	-- 	tostring("Name: " .. LUX:CheckName(GetPlayerName(data))),
+	-- 	tostring("Name: " .. Lux:CheckName(GetPlayerName(data))),
 	-- 	tostring("Server ID: " .. GetPlayerServerId(data)),
 	-- 	tostring("Player ID: ~t~" .. GetPlayerFromServerId(GetPlayerServerId(data))),
 	-- 	tostring("Distance: ~f~" .. math.round(#(vector3(cx, cy, cz) - vector3(tx, ty, tz)), 1)),
 	-- 	tostring("Status: " .. (IsPedDeadOrDying(dataPed, 1) and "~r~Dead " or "~g~Alive")),
-	-- 	tostring("Task: " .. LUX.Game:GetPedStatus(dataPed)),
+	-- 	tostring("Task: " .. Lux.Game:GetPedStatus(dataPed)),
 	-- }
 
 	-- [ NOTE ] refactor infoData into DrawPlayerInfo
@@ -3010,9 +3132,6 @@ function LuxUI.DrawPlayerInfo(player)
 	-- Update player distance every draw
 	local playerDistance = math.round(#(vector3(cx, cy, cz) - vector3(tx, ty, tz)), 1)
 
-	-- Highlife staff query
-	local highlifeRank = DecorGetInt(DrawPlayerInfo.playerPed, 'Player.Rank')
-
 	-- Player Vehicle
 	infoData[1] = {}
 	infoData[1][1] = "Vehicle"
@@ -3032,13 +3151,9 @@ function LuxUI.DrawPlayerInfo(player)
 	infoData[4] = {}
 	infoData[4][1] = "Distance"
 	infoData[4][2] = playerDistance
-
-	infoData[5] = {}
-	infoData[5][1] = "Rank"
-	infoData[5][2] = highlifeRank
 	
 	-- local infoData = {
-	-- 	tostring("Name: " .. LUX:CheckName(GetPlayerName(data))),
+	-- 	tostring("Name: " .. Lux:CheckName(GetPlayerName(data))),
 	-- 	tostring("Server ID: " .. GetPlayerServerId(data)),
 	-- 	tostring("Player ID: ~t~" .. GetPlayerFromServerId(GetPlayerServerId(data))),
 	-- 	tostring("Distance: ~f~" .. math.round(#(vector3(cx, cy, cz) - vector3(tx, ty, tz)), 1)),
@@ -3085,9 +3200,9 @@ function LuxUI.DrawVehiclePreview(vehClass)
 	if class and index then
 		RequestStreamedTextureDict(class[index][2])
 		if HasStreamedTextureDictLoaded(class[index][2]) then
-			DrawSpriteScaled(class[index][2], class[index][3] or class[index][1], (previewX - previewWidth / 2) - frameWidth, previewY, 0.1, nil, 0.0, 255, 255, 255, 255)
+			drawRect((previewX - previewWidth / 2) - frameWidth, previewY + 0.005, previewWidth + 0.005, (0.1 * aspectRatio) / 2 + 0.01, menus[currentMenu].menuFrameColor)
+			DrawSpriteScaled(class[index][2], class[index][3] or class[index][1], (previewX - previewWidth / 2) - frameWidth, previewY + 0.005, previewWidth, nil, 0.0, 255, 255, 255, 255)
 		end
-		drawRect((previewX - previewWidth / 2) - frameWidth, previewY + previewWidth / 3 + footerHeight, previewWidth, footerHeight, menus[currentMenu].menuFrameColor)
 	end
 end
 
@@ -3199,23 +3314,6 @@ function LuxUI.SetMenuButtonPressedSound(id, name, set)
 	setMenuProperty(id, "buttonPressedSound", {["name"] = name, ["set"] = set})
 end
 
-local function KeyboardInput(title, initialText, bufferSize)
-	local editing, finished, cancelled, notActive = 0, 1, 2, 3
-
-	BeginTextCommandDisplayText("keyboard_title_buffer")
-	AddTextComponentSubstringPlayerName(title)
-	EndTextCommandDisplayText(0, 0)
-	DisplayOnscreenKeyboard(false, "keyboard_title_buffer", "", initialText, "", "", "", bufferSize)
-
-	while UpdateOnscreenKeyboard() == editing do
-		HideHudAndRadarThisFrame()
-		Wait(0)
-	end
-
-	if GetOnscreenKeyboardResult() then return GetOnscreenKeyboardResult() end
-	
-end
-
 local function DrawText3D(x, y, z, text, r, g, b)
 	SetDrawOrigin(x, y, z, 0)
 	SetTextFont(0)
@@ -3323,22 +3421,6 @@ function Vehicle.MaxTuning(vehicle)
 	SetVehicleMod(vehicle, tuneMods["Engine"], GetNumVehicleMods(vehicle, tuneMods["Engine"]) - 1)
 end
 
-function DelVeh(veh)
-	SetEntityAsMissionEntity(Object, 1, 1)
-	DeleteEntity(Object)
-	SetEntityAsMissionEntity(GetVehiclePedIsIn(PlayerPedId(), false), 1, 1)
-	DeleteEntity(GetVehiclePedIsIn(PlayerPedId(), false))
-end
-
-function Clean(veh)
-	SetVehicleDirtLevel(veh, 15.0)
-end
-
-function Clean2(veh)
-	SetVehicleDirtLevel(veh, 1.0)
-end
-
-
 local entityEnumerator = {
 	__gc = function(enum)
 	  	if enum.destructor and enum.handle then
@@ -3409,7 +3491,7 @@ local function MenuToggleThread()
 	while isMenuEnabled do
 		-- Radar/showMinimap
 		DisplayRadar(showMinimap, 1)
-		LUX.Player.inVehicle = IsPedInAnyVehicle(PlayerPedId(), 0)
+		Lux.Player.IsInVehicle = IsPedInAnyVehicle(PlayerPedId(), 0)
 
 		SetPlayerInvincible(PlayerId(), Godmode)
 		SetEntityInvincible(PlayerPedId(), Godmode)
@@ -3589,7 +3671,19 @@ local function MenuToggleThread()
 					end
 				end
 			end
+		elseif not playerBlips then
+			local plist = GetActivePlayers()
+			for i = 1, #plist do
+				local id = plist[i]
+				local ped = GetPlayerPed(id)
+				local blip = GetBlipFromEntity(ped)
+				if DoesBlipExist(blip) then -- Removes blip
+					RemoveBlip(blip)
+				end
+			end
+		
 		end
+
 
 		if showNametags then
 			local plist = GetActivePlayers()
@@ -3622,8 +3716,8 @@ local function MenuToggleThread()
 			RestorePlayerStamina(PlayerId(), 1.0)
 		end
 
-		SetRunSprintMultiplierForPlayer(PlayerId(), FastCB[selFastRunIndex])
-		SetPedMoveRateOverride(PlayerPedId(), FastCB[selFastRunIndex])
+		SetRunSprintMultiplierForPlayer(PlayerId(), SliderOptions.FastRun.Values[SliderOptions.FastRun.Selected])
+		SetPedMoveRateOverride(PlayerPedId(), SliderOptions.FastRun.Values[SliderOptions.FastRun.Selected])
 
 		if VehicleGun then
 			local VehicleGunVehicle = "Freight"
@@ -3883,42 +3977,13 @@ local function MenuToggleThread()
 
 		local switch = true
 
-		if RainbowVeh then
+		if Lux.Toggle.RainbowVehicle then
 			local ra = RGBRainbow(1.0)
 			SetVehicleCustomPrimaryColour(GetVehiclePedIsUsing(PlayerPedId()), ra.r, ra.g, ra.b)
 			SetVehicleCustomSecondaryColour(GetVehiclePedIsUsing(PlayerPedId()), ra.r, ra.g, ra.b)
 		end
 
-		if ghettopolice then
-			local r = { r = 255, g = 0, b = 0 }
-			local b = { r = 0, g = 0, b = 255 }
-
-			SetVehicleNeonLightEnabled(GetVehiclePedIsUsing(PlayerPedId()), 0, true)
-			SetVehicleNeonLightEnabled(GetVehiclePedIsUsing(PlayerPedId()), 1, true)
-			SetVehicleNeonLightEnabled(GetVehiclePedIsUsing(PlayerPedId()), 2, true)
-			SetVehicleNeonLightEnabled(GetVehiclePedIsUsing(PlayerPedId()), 3, true)
-			ToggleVehicleMod(GetVehiclePedIsUsing(PlayerPedId()), 22, true)
-			while ghettopolice do
-
-				if switch then
-					SetVehicleCustomPrimaryColour(GetVehiclePedIsUsing(PlayerPedId()), r.r, r.g, r.b)
-					SetVehicleCustomSecondaryColour(GetVehiclePedIsUsing(PlayerPedId()), b.r, b.g, b.b)
-					SetVehicleNeonLightsColour(GetVehiclePedIsUsing(PlayerPedId()),b.r,b.g,b.b)
-					SetVehicleHeadlightsColour(veh, 8)
-					Citizen.Wait(750)
-					switch = false
-				else
-					SetVehicleCustomPrimaryColour(GetVehiclePedIsUsing(PlayerPedId()), b.r, b.g, b.b)
-					SetVehicleCustomSecondaryColour(GetVehiclePedIsUsing(PlayerPedId()), r.r, r.g, r.b)
-					SetVehicleNeonLightsColour(GetVehiclePedIsUsing(PlayerPedId()),r.r,r.g,r.b)
-					SetVehicleHeadlightsColour(veh, 1)
-					Citizen.Wait(750)
-					switch = true
-				end
-			end
-		end
-
-		if LUX.Player.isNoclipping then
+		if Lux.Player.isNoclipping then
 			local isInVehicle = IsPedInAnyVehicle(PlayerPedId(), 0)
 			local k = nil
 			local x, y, z = nil
@@ -3931,20 +3996,20 @@ local function MenuToggleThread()
 				x, y, z = table.unpack(GetEntityCoords(PlayerPedId(), 1))
 			end
 			
-			if isInVehicle and LUX.Game:GetSeatPedIsIn(PlayerPedId()) ~= -1 then LUX.Game:RequestControlOnce(k) end
+			if isInVehicle and Lux.Game:GetSeatPedIsIn(PlayerPedId()) ~= -1 then Lux.Game:RequestControlOnce(k) end
 			
-			local dx, dy, dz = LUX.Game:GetCamDirection()
+			local dx, dy, dz = Lux.Game:GetCamDirection()
 			SetEntityVisible(PlayerPedId(), 0, 0)
 			SetEntityVisible(k, 0, 0)
 			
 			SetEntityVelocity(k, 0.0001, 0.0001, 0.0001)
 			
-			if IsDisabledControlJustPressed(0, LUX.Keys["LEFTSHIFT"]) then -- Change speed
+			if IsDisabledControlJustPressed(0, Lux.Keys["LEFTSHIFT"]) then -- Change speed
 				oldSpeed = NoclipSpeed
 				NoclipSpeed = NoclipSpeed * 5
 			end
 			
-			if IsDisabledControlJustReleased(0, LUX.Keys["LEFTSHIFT"]) then -- Restore speed
+			if IsDisabledControlJustReleased(0, Lux.Keys["LEFTSHIFT"]) then -- Restore speed
 				NoclipSpeed = oldSpeed
 			end
 			
@@ -3960,11 +4025,11 @@ local function MenuToggleThread()
 				z = z - NoclipSpeed * dz
 			end
 			
-			if IsDisabledControlPressed(0, LUX.Keys["SPACE"]) then -- MOVE UP
+			if IsDisabledControlPressed(0, Lux.Keys["SPACE"]) then -- MOVE UP
 				z = z + NoclipSpeed
 			end
 			
-			if IsDisabledControlPressed(0, LUX.Keys["LEFTCTRL"]) then -- MOVE DOWN
+			if IsDisabledControlPressed(0, Lux.Keys["LEFTCTRL"]) then -- MOVE DOWN
 				z = z - NoclipSpeed
 			end
 			
@@ -3992,7 +4057,7 @@ local function MenuRuntimeThread()
 	LuxUI.CreateSubMenu("SelfMenu", "LuxMainMenu", "Self Options")
 	LuxUI.CreateSubMenu('OnlinePlayersMenu', 'LuxMainMenu', "Online Options")
 	LuxUI.CreateSubMenu("VisualMenu", "LuxMainMenu", "Visual Options")
-	LuxUI.CreateSubMenu("TeleportMenu", "LuxMainMenu", "Teleport Menu")
+	LuxUI.CreateSubMenu("TeleportMenu", "LuxMainMenu", "Teleport Options")
 	
 	-- MAIN MENU > Vehicle Options
 	LuxUI.CreateSubMenu("LocalVehicleMenu", "LuxMainMenu", "Vehicle Options")
@@ -4095,9 +4160,9 @@ local function MenuRuntimeThread()
 
 	while isMenuEnabled do
 		ped = PlayerPedId()
-		LUX.Player.Vehicle = GetVehiclePedIsUsing(ped)
+		Lux.Player.Vehicle = GetVehiclePedIsUsing(ped)
 
-		if IsDisabledControlJustPressed(0, LUX.Keys["DELETE"]) then
+		if IsDisabledControlJustPressed(0, Lux.Keys["DELETE"]) then
 			--GateKeep()
 			LuxUI.OpenMenu("LuxMainMenu")
 		end
@@ -4124,6 +4189,13 @@ local function MenuRuntimeThread()
 				SetPedArmour(PlayerPedId(), 200)
 			end
 
+			if LuxUI.Button("Revive Self") then
+				local pos = GetEntityCoords(PlayerPedId())
+				local heading = GetEntityHeading(PlayerPedId())
+				NetworkResurrectLocalPlayer(pos.x, pos.y, pos.z, heading, true, false)
+				AnimpostfxStopAll()
+			end
+
 			if LuxUI.Button("Suicide") then
 				KillYourself()
 			end
@@ -4134,9 +4206,9 @@ local function MenuRuntimeThread()
 
 			if LuxUI.CheckBox("No Ragdoll", RagdollToggle, function(enabled) RagdollToggle = enabled end) then end
 			
-			if LuxUI.Slider("Move Speed", FastCBWords, selFastRunIndex, function(selectedIndex)
-				if selFastRunIndex ~= selectedIndex then 
-					selFastRunIndex = selectedIndex
+			if LuxUI.Slider("Move Speed", SliderOptions.FastRun.Words, SliderOptions.FastRun.Selected, function(selectedIndex)
+				if SliderOptions.FastRun.Selected ~= selectedIndex then 
+					SliderOptions.FastRun.Selected = selectedIndex
 				end
 			end) then end
 			
@@ -4152,9 +4224,9 @@ local function MenuRuntimeThread()
 
 			end
 
-			if LuxUI.CheckBox("~r~Noclip", LUX.Player.isNoclipping, function(enabled) 
-				LUX.Player.isNoclipping = enabled 
-				if LUX.Player.isNoclipping then
+			if LuxUI.CheckBox("~r~Noclip", Lux.Player.isNoclipping, function(enabled) 
+				Lux.Player.isNoclipping = enabled 
+				if Lux.Player.isNoclipping then
 					SetEntityVisible(PlayerPedId(), false, false)
 				else
 					SetEntityRotation(GetVehiclePedIsIn(PlayerPedId(), 0), GetGameplayCamRot(2), 2, 1)
@@ -4167,9 +4239,14 @@ local function MenuRuntimeThread()
 		elseif LuxUI.IsMenuOpened("TeleportMenu") then
 			if LuxUI.Button("Teleport to waypoint") then
 				TeleportToWaypoint()
-			 end
+			end
+
+			if LuxUI.Button("Drive Facing Vehicle") then
+				local vehicle = GetVehicleInFrontOfMe()
+				SetPedIntoVehicle(PlayerPedId(), vehicle, -1)
+			end
 	
-			 LuxUI.Display()
+			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("VisualMenu") then
 			-- if
 			-- 	LuxUI.CheckBox(
@@ -4338,91 +4415,30 @@ local function MenuRuntimeThread()
 
 			if LuxUI.MenuButton("Vehicle Spawner", "LocalVehicleSpawner") then
 			end
-			if LuxUI.Button("Repair Vehicle") then
-				local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
-				SetVehicleFixed(vehicle)
-				SetVehicleLights(vehicle, 0)
-				SetVehicleBurnout(vehicle, false)
-				SetVehicleLightsMode(vehicle, 0)
-			end
-			if LuxUI.Button("Delete Vehicle") then
-				if LUX.Player.inVehicle then
-					DelVeh(GetVehiclePedIsUsing(PlayerPedId()))
-				else
-					LuxUI.SendNotification({text = "You must be in a vehicle", type = "error"})
-				end
-			end
-			if LuxUI.Button("ESX Give Ownership") then
-				if LUX.Player.inVehicle then
-					local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
-					SetVehicleNumberPlateText(vehicle, exports.esx_vehicleshop:GeneratePlate())
-					local vehicleProps = LUX.Game.GetVehicleProperties(vehicle)
-					TriggerServerEvent('esx_vehicleshop:setVehicleOwned', vehicleProps)
-					--TriggerServerEvent('esx_givecarkeys:setVehicleOwned', vehicleProps)
-				else
-					LuxUI.SendNotification({text = "You must be in a vehicle", type = "error"})
-				end
-			end
-			if LuxUI.Button("ESX Sell Vehicle") then
-				local vehicle = GetVehiclePedIsIn(PlayerPedId(), false)
-				local vehicleProps = LUX.Game.GetVehicleProperties(vehicle)
-				ESX.TriggerServerCallback('esx_vehicleshop:resellVehicle', function(vehicleSold)
 
-					if vehicleSold then
-						ESX.Game.DeleteVehicle(vehicle)
-						ESX.ShowNotification("Vehicle sold")
-					else
-						ESX.ShowNotification("Nacho Vehicle")
-					end
-
-				end, vehicleProps.plate, vehicleProps.model)
-			end
-			if LuxUI.MenuButton("LS Customs", "LSC") then end
-			if LuxUI.Button("Flip Vehicle") then
-				local playerPed = PlayerPedId()
-				local playerVeh = GetVehiclePedIsIn(playerPed, true)
-				if IsPedInAnyVehicle(PlayerPedId(), 0) then
-					if (GetPedInVehicleSeat(GetVehiclePedIsIn(PlayerPedId(), 0), -1) == PlayerPedId()) then
-						SetVehicleOnGroundProperly(playerVeh)
-						--LuxUI.SendNotification({text = "Your vehicle was flipped", type = 'success'})
-					else
-						LuxUI.SendNotification({text = "You must be the driver of the vehicle", type = 'error'})
-					end
-				else
-					LuxUI.SendNotification({text = "You must be in a vehicle to flip", type = 'error'})
+			if LuxUI.ComboBox("Vehicle Actions", ComboOptions.VehicleActions.Words, ComboOptions.VehicleActions.Selected, function(selectedIndex)
+				if ComboOptions.VehicleActions.Selected ~= selectedIndex then
+					ComboOptions.VehicleActions.Selected = selectedIndex
 				end
+			end) then 
+				ComboOptions.VehicleActions.Values[ComboOptions.VehicleActions.Selected](Lux.Player.Vehicle)
 			end
+
+			if LuxUI.MenuButton("Modify Vehicle", "LSC") then end
+
+			if LuxUI.ComboBox("Vehicle Hygiene", ComboOptions.DirtLevel.Words, ComboOptions.DirtLevel.Selected(Lux.Player.Vehicle), function(selectedIndex)
+				if ComboOptions.DirtLevel.Selected(Lux.Player.Vehicle) ~= ComboOptions.DirtLevel.Values[selectedIndex] then
+					SetVehicleDirtLevel(Lux.Player.Vehicle, ComboOptions.DirtLevel.Values[selectedIndex])
+				end
+			end) then end
+
 			if LuxUI.Button("Change License Plate") then
-				local playerPed = PlayerPedId()
-				local playerVeh = GetVehiclePedIsIn(playerPed, true)
-				local result = KeyboardInput("Enter new plate text", "", 8)
-				if result then
-					SetVehicleNumberPlateText(playerVeh, result)
-				end
+				ChangeVehiclePlateText(Lux.Player.Vehicle)
 			end
-			if LuxUI.Button("Max Tuning") then
-				Vehicle.MaxTuning(GetVehiclePedIsUsing(PlayerPedId()))
+
+			if LuxUI.CheckBox("Rainbow Vehicle Color", Lux.Toggle.RainbowVehicle, RainbowVehicle) then 
 			end
-			if LuxUI.CheckBox("Rainbow Vehicle Colour", RainbowVeh, function(enabled) RainbowVeh = enabled end) then 
-			end
-			if LuxUI.CheckBox("Ghetto Police Car", ghettopolice, function(enabled) ghettopolice = enabled end) then
-			end
-			if LuxUI.Button("Make vehicle dirty") then
-				SetVehicleDirtLevel(GetVehiclePedIsIn(PlayerPedId(), false), 0.0)
-				Clean(GetVehiclePedIsUsing(PlayerPedId()))
-				LuxUI.SendNotification("Vehicle is now dirty")
-			end
-			if LuxUI.Button("Make vehicle clean") then
-				Clean2(GetVehiclePedIsUsing(PlayerPedId()))
-				LuxUI.SendNotification("Vehicle is now clean")
-			end
-			if LuxUI.CheckBox("Seatbelt", Seatbelt, 
-					function(enabled) 
-						Seatbelt = enabled 
-						SetPedCanBeKnockedOffVehicle(PlayerPedId(), Seatbelt) 
-					end) 
-				then
-			end
+
 			if LuxUI.CheckBox("Vehicle Godmode", VehGod,
 					function(enabled)
 						VehGod = enabled
@@ -4438,25 +4454,22 @@ local function MenuRuntimeThread()
 
 			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("LocalVehicleSpawner") then
+			if LuxUI.CheckBox("Spawn Inside", Lux.Toggle.SpawnInVehicle, function(enabled)
+				Lux.Toggle.SpawnInVehicle = enabled
+			end) then end
+			
+			if LuxUI.CheckBox("Replace Current", Lux.Toggle.ReplaceVehicle, function(enabled) 
+				Lux.Toggle.ReplaceVehicle = enabled 
+			end) then end
+
+
 			if LuxUI.Button("Spawn Vehicle by Hash") then
 				local modelName = KeyboardInput("Enter vehicle spawn name", "", 12)
 				if not modelName then -- Do nothing in case of accidentel press or change of mind
 				elseif IsModelValid(modelName) and IsModelAVehicle(modelName) then
-					RequestModel(modelName)
-
-					while not HasModelLoaded(modelName) do
-						Wait(100)
-					end
-
-					local vehicle = CreateVehicle(GetHashKey(modelName), GetEntityCoords(PlayerPedId()), GetEntityHeading(PlayerPedId()), true, false)
-
-					SetPedIntoVehicle(PlayerPedId(), vehicle, -1)
-
-					SetEntityAsNoLongerNeeded(vehicle)
-
-					SetModelAsNoLongerNeeded(modelName)
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
 				else
-					LuxUI.SendNotification({text = string.format("~o~%s ~s~is not a valid vehicle", modelName), type = 'error'})
+					LuxUI.SendNotification({text = string.format("%s is not a valid vehicle", modelName), type = 'error'})
 				end
 			end
 			if LuxUI.MenuButton("Compacts", "localcompacts") then end
@@ -4478,7 +4491,6 @@ local function MenuRuntimeThread()
 			if LuxUI.MenuButton('Planes', 'localplanes') then end
 			if LuxUI.MenuButton('Service/Emergency/Military', 'localservice') then end
 			if LuxUI.MenuButton('Commercial/Trains', 'localcommercial') then end
-			--LuxUI.DrawVehiclePreview()
 			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened('localcompacts') then
 			for i = 1, #VehicleClass.compacts do
@@ -4486,14 +4498,230 @@ local function MenuRuntimeThread()
 				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
 
 				if LuxUI.Button(vehname) then
-					SpawnLocalVehicle(modelName)
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
 				end
 			end
 
 			LuxUI.DrawVehiclePreview('compacts')
 			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localsedans') then
+			for i = 1, #VehicleClass.sedans do
+				local modelName = VehicleClass.sedans[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('sedans')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localsuvs') then
+			for i = 1, #VehicleClass.suvs do
+				local modelName = VehicleClass.suvs[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('suvs')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localcoupes') then
+			for i = 1, #VehicleClass.coupes do
+				local modelName = VehicleClass.coupes[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('coupes')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localmuscle') then
+			for i = 1, #VehicleClass.muscle do
+				local modelName = VehicleClass.muscle[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('muscle')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localsportsclassics') then
+			for i = 1, #VehicleClass.sportsclassics do
+				local modelName = VehicleClass.sportsclassics[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('sportsclassics')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localsports') then
+			for i = 1, #VehicleClass.sports do
+				local modelName = VehicleClass.sports[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('sports')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localsuper') then
+			for i = 1, #VehicleClass.super do
+				local modelName = VehicleClass.super[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('super')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localmotorcycles') then
+			for i = 1, #VehicleClass.motorcycles do
+				local modelName = VehicleClass.motorcycles[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('motorcycles')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localoffroad') then
+			for i = 1, #VehicleClass.offroad do
+				local modelName = VehicleClass.offroad[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('offroad')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localindustrial') then
+			for i = 1, #VehicleClass.industrial do
+				local modelName = VehicleClass.industrial[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('industrial')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localutility') then
+			for i = 1, #VehicleClass.utility do
+				local modelName = VehicleClass.utility[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('utility')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localvans') then
+			for i = 1, #VehicleClass.vans do
+				local modelName = VehicleClass.vans[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('vans')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localcycles') then
+			for i = 1, #VehicleClass.cycles do
+				local modelName = VehicleClass.cycles[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('cycles')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localboats') then
+			for i = 1, #VehicleClass.boats do
+				local modelName = VehicleClass.boats[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('boats')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localhelicopters') then
+			for i = 1, #VehicleClass.helicopters do
+				local modelName = VehicleClass.helicopters[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('helicopters')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localplanes') then
+			for i = 1, #VehicleClass.planes do
+				local modelName = VehicleClass.planes[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('planes')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localservice') then
+			for i = 1, #VehicleClass.service do
+				local modelName = VehicleClass.service[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('service')
+			LuxUI.Display()
+		elseif LuxUI.IsMenuOpened('localcommercial') then
+			for i = 1, #VehicleClass.commercial do
+				local modelName = VehicleClass.commercial[i][1]
+				local vehname = GetLabelText(GetDisplayNameFromVehicleModel(modelName))
+
+				if LuxUI.Button(vehname) then
+					SpawnLocalVehicle(modelName, Lux.Toggle.ReplaceVehicle, Lux.Toggle.SpawnInVehicle)
+				end
+			end
+
+			LuxUI.DrawVehiclePreview('commercial')
+			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("LSC") then
-			if LUX.Player.inVehicle then
+			if Lux.Player.IsInVehicle then
 				if LuxUI.MenuButton("Bodywork", "lsc_bodywork") then
 					LSC.UpdateMods()
 				end
@@ -4508,16 +4736,16 @@ local function MenuRuntimeThread()
 			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("lsc_bodywork") then
 			local installed = currentMods
-			if LUX.Player.inVehicle then
+			if Lux.Player.IsInVehicle then
 				for i, type in pairs(LSC.vehicleMods) do
-					SetVehicleModKit(LUX.Player.Vehicle, 0)
-					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, type.id)
+					SetVehicleModKit(Lux.Player.Vehicle, 0)
+					local modCount = GetNumVehicleMods(Lux.Player.Vehicle, type.id)
 					if modCount > 0 then
 						if type.meta == "modFrontWheels" or type.meta == "modBackWheels" then
 							if LuxUI.ComboBox(type.name, LSC.WheelType, installed['wheels'], function(selectedIndex, selectedItem)
 								selectedIndex = selectedIndex - 1
 								installed['wheels'] = selectedIndex
-								SetVehicleWheelType(LUX.Player.Vehicle, selectedIndex)
+								SetVehicleWheelType(Lux.Player.Vehicle, selectedIndex)
 								LuxUI.SetSubTitle(type.meta, selectedItem .. " Wheels")
 							end, true) then
 								if modCount > 0 then
@@ -4536,23 +4764,31 @@ local function MenuRuntimeThread()
 			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("lsc_performance") then
 			local installed = currentMods
-			if LUX.Player.inVehicle then
-				SetVehicleModKit(LUX.Player.Vehicle, 0)
+			if Lux.Player.IsInVehicle then
+				SetVehicleModKit(Lux.Player.Vehicle, 0)
 				for i, type in pairs(LSC.perfMods) do
-					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, type.id)
+					local modCount = GetNumVehicleMods(Lux.Player.Vehicle, type.id)
 					if modCount > 0 then
 						if LuxUI.Slider(type.name, VehicleUpgradeWords[modCount], installed[type.meta], function(selectedIndex)
 							selectedIndex = selectedIndex - 2
 							installed[type.meta] = selectedIndex
-							SetVehicleMod(LUX.Player.Vehicle, type.id, selectedIndex, false)
+							SetVehicleMod(Lux.Player.Vehicle, type.id, selectedIndex, false)
 						end, true) then end
 					end
 				end
 
 				if LuxUI.CheckBox("Turbo", installed['modTurbo'], function(enabled)
 					installed['modTurbo'] = enabled
-					ToggleVehicleMod(LUX.Player.Vehicle, 18, enabled)
+					ToggleVehicleMod(Lux.Player.Vehicle, 18, enabled)
 				end) then end
+				
+				if LuxUI.ComboBox("Engine Power", ComboOptions.EnginePower.Words, ComboOptions.EnginePower.Selected, function(selectedIndex)
+					if ComboOptions.EnginePower.Selected ~= selectedIndex then
+						ComboOptions.EnginePower.Selected = selectedIndex
+						SetVehicleEnginePowerMultiplier(Lux.Player.Vehicle, ComboOptions.EnginePower.Values[ComboOptions.EnginePower.Selected])
+					end
+				end) then 
+				end
 			else
 				if LuxUI.Button("No vehicle found") then
 				end
@@ -4561,11 +4797,11 @@ local function MenuRuntimeThread()
 			LuxUI.Display()
 		elseif LuxUI.IsMenuOpened("ServerMenu") then
 			if LuxUI.MenuButton("Resource List", "ServerResources") then end
-			if LuxUI.MenuButton("ESX Boss Options", "ESXBoss") then end
-			if LuxUI.MenuButton("ESX Money Options", "ESXMoney") then end
-			if LuxUI.MenuButton("ESX Misc Options", "ESXMisc") then end
-			if LuxUI.MenuButton("ESX Drug Options", "ESXDrugs") then end
-			if LuxUI.MenuButton("VRP Options", "VRPOptions") then end
+			-- if LuxUI.MenuButton("ESX Boss Options", "ESXBoss") then end
+			-- if LuxUI.MenuButton("ESX Money Options", "ESXMoney") then end
+			-- if LuxUI.MenuButton("ESX Misc Options", "ESXMisc") then end
+			-- if LuxUI.MenuButton("ESX Drug Options", "ESXDrugs") then end
+			-- if LuxUI.MenuButton("VRP Options", "VRPOptions") then end
 			if LuxUI.MenuButton("Misc Options", "MiscServerOptions") then end
 
 			LuxUI.Display()
@@ -4915,12 +5151,16 @@ local function MenuRuntimeThread()
 				SpectatePlayer(SelectedPlayer)
 			end
 
+			if LuxUI.Button("Native Revive") then
+				ResurrectPed(GetPlayerPed(SelectedPlayer))
+			end
+
 			if LuxUI.Button("Ragdoll") then
 				SetPedToRagdoll(GetPlayerPed(SelectedPlayer), 3000, 1, 1, true, true, false)
 			end
 
 			if LuxUI.Button("Teleport To Player") then
-				LUX.Game:TeleportToPlayer(SelectedPlayer)
+				Lux.Game:TeleportToPlayer(SelectedPlayer)
 			end
 
 			if LuxUI.MenuButton("Weapon Menu", "OnlineWepMenu") then end
@@ -5060,7 +5300,7 @@ local function MenuRuntimeThread()
 
 					local veh = CreateVehicle(GetHashKey(ModelName), GetEntityCoords(ped), GetEntityHeading(ped), true, true)
 					SetVehicleNumberPlateText(veh, newPlate)
-					local vehicleProps = LUX.Game.GetVehicleProperties(veh)
+					local vehicleProps = Lux.Game.GetVehicleProperties(veh)
 					TriggerServerEvent('esx_vehicleshop:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
 					TriggerServerEvent('esx_givecarkeys:setVehicleOwnedPlayerId', GetPlayerServerId(SelectedPlayer), vehicleProps)
 					TriggerServerEvent('garage:addKeys', newPlate)
@@ -5147,12 +5387,12 @@ local function MenuRuntimeThread()
 					for j = 0, 51, 1 do
 						if j == currentMods[mods.meta] then
 							if LuxUI.Button(LSC.GetHornName(j), "Installed", nil, _menuColor.base) then 
-								RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+								RemoveVehicleMod(Lux.Player.Vehicle, mods.id)
 								LSC.UpdateMods()
 							end
 						else
 							if LuxUI.Button(LSC.GetHornName(j), "Not Installed") then 
-								SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+								SetVehicleMod(Lux.Player.Vehicle, mods.id, j)
 								LSC.UpdateMods()
 							end
 						end
@@ -5161,18 +5401,18 @@ local function MenuRuntimeThread()
 				end
 			elseif mods.meta == "modFrontWheels" or mods.meta == "modBackWheels" then
 				if LuxUI.IsMenuOpened(mods.meta) then
-					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, mods.id)
+					local modCount = GetNumVehicleMods(Lux.Player.Vehicle, mods.id)
 					for j = 0, modCount, 1 do
-						local modName = GetModTextLabel(LUX.Player.Vehicle, mods.id, j)
+						local modName = GetModTextLabel(Lux.Player.Vehicle, mods.id, j)
 						if modName then
 							if j == currentMods[mods.meta] then
 								if LuxUI.Button(GetLabelText(modName), "Installed", nil, _menuColor.base) then 
-									RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+									RemoveVehicleMod(Lux.Player.Vehicle, mods.id)
 									LSC.UpdateMods()
 								end
 							else
 								if LuxUI.Button(GetLabelText(modName), "Not Installed") then 
-									SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+									SetVehicleMod(Lux.Player.Vehicle, mods.id, j)
 									LSC.UpdateMods()
 								end
 							end
@@ -5182,18 +5422,18 @@ local function MenuRuntimeThread()
 				end
 			else
 				if LuxUI.IsMenuOpened(mods.meta) then
-					local modCount = GetNumVehicleMods(LUX.Player.Vehicle, mods.id)
+					local modCount = GetNumVehicleMods(Lux.Player.Vehicle, mods.id)
 					for j = 0, modCount, 1 do
-						local modName = GetModTextLabel(LUX.Player.Vehicle, mods.id, j)
+						local modName = GetModTextLabel(Lux.Player.Vehicle, mods.id, j)
 						if modName then
 							if j == currentMods[mods.meta] then
 								if LuxUI.Button(GetLabelText(modName), "Installed", nil, _menuColor.base) then 
-									RemoveVehicleMod(LUX.Player.Vehicle, mods.id)
+									RemoveVehicleMod(Lux.Player.Vehicle, mods.id)
 									LSC.UpdateMods()
 								end
 							else
 								if LuxUI.Button(GetLabelText(modName), "Not Installed") then 
-									SetVehicleMod(LUX.Player.Vehicle, mods.id, j)
+									SetVehicleMod(Lux.Player.Vehicle, mods.id, j)
 									LSC.UpdateMods()
 								end
 							end

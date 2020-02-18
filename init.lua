@@ -12,6 +12,7 @@ local blacklistedEvents = {
 	"discordbot",
 	"EasyAdmin:CaptureScreenshot",
 	"screenshot",
+	"cheat"
 }
 
 local registeredEvents = {}
