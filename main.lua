@@ -1,3 +1,5 @@
+
+
 -- Globals
 -- Menu color customization
 local _menuColor
